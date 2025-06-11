@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "cytoscape": "^3.32.0",
+    "vue-router": "^4.5.1"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5"
+  }
+}
