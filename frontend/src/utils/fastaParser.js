@@ -8,7 +8,7 @@ export function parseFasta(text) {
         if (line.startsWith('>')) {
             if (current) entries.push(current);
 
-            const header = line.trim();
+            const header = line;
 
             // Extrait uniprot_id (entre les deux premiers |)
             const idMatch = header.match(/\|([A-Z0-9]+)\|/);
@@ -36,7 +36,6 @@ export function parseFasta(text) {
                 gene_name,
                 organism,
                 organism_id,
-                header,
                 sequence: '',
             }
         } else if (current && line.trim() !== '') {
@@ -45,5 +44,6 @@ export function parseFasta(text) {
     }
 
     if (current) entries.push(current);
-    return entries;
+        return entries;
+
 }
