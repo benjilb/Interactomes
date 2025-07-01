@@ -1,29 +1,36 @@
 <template>
-  <h3>Crosslink Graph</h3>
 
-  <div class="graph-container">
+  <div class="graph-page">
+    <ProteinInfo :protein="selectedProtein" />
 
-    <div ref="cyContainer" class="cytoscape cytoscape-graph"></div>
+    <div class="graph-container">
+      <h3>Crosslink Graph</h3>
+      <div ref="cyContainer" class="cytoscape cytoscape-graph"></div>
 
+    </div>
   </div>
 </template>
 
 <script setup>
 
-import {onMounted, ref, onBeforeUnmount, nextTick} from 'vue'
+import {ref,onMounted, onBeforeUnmount, nextTick} from 'vue'
 import cytoscape from 'cytoscape'
 import { useDataStore } from '@/store/dataStore'
 import { toRaw } from 'vue'
+import ProteinInfo from '@/components/ProteinInfo.vue'
+
 
 const cyContainer = ref(null);
 let cy = null;
 const store = useDataStore();
+const selectedProtein = ref(null)
+
 
 const handleResize = () => {
   if (cy) {
     cy.resize();
     cy.fit();
-    //cy.center();
+    cy.center();
   }
 };
 const forceCanvasAlignment = () => {
@@ -49,12 +56,13 @@ onMounted(async () => {
   const nodes = fastaData.map(protein => ({
     data: {
       id: protein.uniprot_id,
-      label: protein.protein_name || protein.uniprot_id
+      label: protein.uniprot_id
     }
   }))
   /*  csvData.forEach((link, i) => {
     console.log(`Edge ${i}:`, link.Protein1, link.Protein2 )
   })*/
+  const proteinMap = new Map(fastaData.map(p => [p.uniprot_id.toUpperCase(), p]))
 
   //toutes les proteines du fasta sont stocke dans proteinIds
   const proteinIds = new Set(fastaData.map(p => (p.uniprot_id || '').trim().toUpperCase()));
@@ -92,14 +100,14 @@ onMounted(async () => {
   console.log('validEdges:', validEdges);
 
   await nextTick();
-
+/*
   setTimeout(() => {
     if (cy) {
       cy.resize();
       cy.fit();
     }
   }, 100);
-
+*/
     cy = cytoscape({
       container: cyContainer.value,
       elements: [...nodes, ...validEdges],
@@ -150,6 +158,11 @@ onMounted(async () => {
          cy.fit();
        }, 100);
      });
+    cy.on('tap', 'node', evt => {
+      const node = evt.target
+      const id = node.data('id').toUpperCase()
+      selectedProtein.value = proteinMap.get(id) || null
+    });
     window.addEventListener('resize', handleResize);
 
 });
@@ -161,6 +174,17 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped >
+.graph-page {
+  display: flex;
+  height: calc(100vh - 50px);
+}
+/*
+.graph-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}*/
 
 .graph-container {
   width: 100%;
@@ -168,7 +192,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   position: relative;
-  overflow: clip;
+  overflow: visible;
 }
 .cytoscape {
   flex: 1;
@@ -184,9 +208,4 @@ onBeforeUnmount(() => {
 .cytoscape-graph canvas {
   left: 0 !important;
 }
-
-* {
-  outline: 1px dashed rgba(0, 0, 255, 0.2);
-}
-
 </style>
