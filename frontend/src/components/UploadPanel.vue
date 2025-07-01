@@ -33,6 +33,11 @@
       Generate Graph
     </button>
 
+    <!-- Bouton Generate Graph Test -->
+    <button @click="generateGraphTest">
+      Generate Graph Test
+    </button>
+
     <!-- GraphView affiché dynamiquement -->
 
     <div v-if="showGraph">
@@ -59,7 +64,7 @@ const handleFastaUpload = async (e) => {
   const content = await file.text()
   const parsed = parseFasta(content)
   console.log('FASTA parsed:', parsed)
-  store.fastaData = parseFasta(content)
+  store.fastaData = parsed
 }
 
 const handleCsvUpload = async (e) => {
@@ -68,9 +73,25 @@ const handleCsvUpload = async (e) => {
   const content = await file.text()
   const parsed = parseCsv(content)
   console.log('CSV parsed:', parsed)
-  store.csvData = parseCsv(content)
+  store.csvData = parsed
 }
 
 const canGenerate = computed(() => store.isFastaLoaded && store.isCsvLoaded)
+
+const generateGraphTest = async () => {
+  try {
+    const fastaResponse = await fetch('/test-data/uniprotkb_cyanophora_paradoxa_2024_02_20.fasta')
+    const fastaContent = await fastaResponse.text()
+    store.fastaData = parseFasta(fastaContent)
+
+    const csvResponse = await fetch('/test-data/cyanophoraXL_combmethod bis.csv')
+    const csvContent = await csvResponse.text()
+    store.csvData = parseCsv(csvContent)
+
+    showGraph.value = true
+  } catch (error) {
+    console.error("Erreur lors du chargement des fichiers de test :", error)
+  }
+}
 
 </script>
