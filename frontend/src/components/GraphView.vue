@@ -115,7 +115,7 @@ onMounted(async () => {
         name: 'concentric',
         concentric: node => node.degree(),
         levelWidth: () => 2,
-        padding: 10,
+        padding: 20,
         animate: true
       },
       style: [
@@ -178,32 +178,43 @@ onBeforeUnmount(() => {
   display: flex;
   height: calc(100vh - 50px);
 }
-/*
-.graph-container {
+/*.graph-container {
   flex: 1;
   display: flex;
   flex-direction: column;
   position: relative;
+  min-width: 500px;
+  max-width: 100%;
+  height: 100%;
+  overflow: visible;
 }*/
 
 .graph-container {
-  width: 100%;
-  height: calc(100vh - 50px);
-  display: flex;
-  flex-direction: column;
+  flex: 1;
+  min-width: 600px; /* taille minimum */
+  max-width: 900px; /* ou la taille max souhaitée */
+  height: 600px; /* hauteur fixe */
   position: relative;
-  overflow: visible;
+  overflow: visible; /* éviter débordements */
 }
+/*
 .cytoscape {
   flex: 1;
   width: 100%;
   min-height: 0;
-  border: 1px solid #ccc;
-  /*border: 2px dashed red;*/
+  border: 3px solid #ccc;
   position: relative;
   transform-style: preserve-3d;
   left: 0;
 
+}*/
+
+.cytoscape {
+  width: 100%;
+  height: 100%; /* prendre toute la hauteur */
+  border: 3px solid #ccc;
+  position: relative;
+  left: 0;
 }
 .cytoscape-graph canvas {
   left: 0 !important;
