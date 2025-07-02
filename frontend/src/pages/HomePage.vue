@@ -10,8 +10,19 @@ import UploadPanel from '@/components/UploadPanel.vue'
 </script>
 
 <style scoped>
+h1 {
+  margin-top: 0;
+}
+
 .home {
-  text-align: center;
-  padding: 3rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+
+  height: 100vh;
+  width: 100vw;
+
+  box-sizing: border-box;
 }
 </style>
