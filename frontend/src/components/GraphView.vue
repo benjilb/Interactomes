@@ -52,79 +52,108 @@ onMounted(async () => {
     return;
   }
 
-  // Nodes from FASTA
-  const nodes = fastaData.map(protein => ({
-    data: {
-      id: protein.uniprot_id,
-      label: protein.uniprot_id
-    }
-  }));
-
-  const proteinMap = new Map(fastaData.map(p => [p.uniprot_id.toUpperCase(), p]));
-
+  // Ensemble des protéines (IDs en majuscule)
   const proteinIds = new Set(fastaData.map(p => (p.uniprot_id || '').trim().toUpperCase()));
 
-  // Regroup edges by pair source-target
+  // Map pour retrouver la protéine par ID
+  const proteinIdMap = new Map(fastaData.map(p => [p.uniprot_id.toUpperCase(), p]));
+
+  // Regrouper les arêtes entre mêmes protéines, compter les crosslinks
   const edgeMap = new Map();
 
-  csvData.forEach((link) => {
+  csvData.forEach(link => {
     const source = (link.Protein1 || '').trim().toUpperCase();
     const target = (link.Protein2 || '').trim().toUpperCase();
 
-    if (!proteinIds.has(source) || !proteinIds.has(target)) return;
-
-    // Graphe non orienté : trier pour éviter doublons
-    const key = [source, target].sort().join('--');
-
-    if (!edgeMap.has(key)) {
-      edgeMap.set(key, {
-        count: 0,
-        source,
-        target,
-        labels: []
-      });
+    if (!proteinIds.has(source) || !proteinIds.has(target)) {
+      return; // lien non valide
     }
 
-    const edgeData = edgeMap.get(key);
-    edgeData.count += 1;
-    edgeData.labels.push(`Pos1: ${link.AbsPos1}, Pos2: ${link.AbsPos2}`);
+    // Clé unique indépendamment de l’ordre source/target (pour graphe non orienté)
+    const key = source < target ? `${source}|${target}` : `${target}|${source}`;
+
+    if (!edgeMap.has(key)) {
+      edgeMap.set(key, { source, target, count: 1 });
+    } else {
+      edgeMap.get(key).count++;
+    }
   });
+
+  // Normaliser largeur des arêtes
   const counts = Array.from(edgeMap.values()).map(e => e.count);
   const minCount = Math.min(...counts);
   const maxCount = Math.max(...counts);
-
   const minWidth = 2;
   const maxWidth = 8;
 
+
   const normalizeWidth = (count) => {
-    if (maxCount === minCount) return (minWidth + maxWidth) / 2; // cas où tous égaux
+    if (maxCount === minCount) return (minWidth + maxWidth) / 2;
     return minWidth + ((count - minCount) / (maxCount - minCount)) * (maxWidth - minWidth);
   };
 
-  // Construire edges uniques avec largeur variable
+  // Calculer degré pondéré des protéines (nœuds)
+  const degreeMap = new Map();
+  fastaData.forEach(p => {
+    degreeMap.set(p.uniprot_id.toUpperCase(), 0);
+  });
+  edgeMap.forEach(({ source, target, count }) => {
+    degreeMap.set(source, (degreeMap.get(source) || 0) + count);
+    degreeMap.set(target, (degreeMap.get(target) || 0) + count);
+  });
+
+  // Normaliser taille des nœuds
+  const degrees = Array.from(degreeMap.values());
+  const minDegree = Math.min(...degrees);
+  const maxDegree = Math.max(...degrees);
+  const minSize = 20;
+  const maxSize = 50;
+  const normalizeSize = (deg) => {
+    if (maxDegree === minDegree) return (minSize + maxSize) / 2;
+    return minSize + ((deg - minDegree) / (maxDegree - minDegree)) * (maxSize - minSize);
+  };
+
+  // Créer nœuds avec taille normalisée
+  const nodes = fastaData.map(protein => {
+    const id = protein.uniprot_id.toUpperCase();
+    const degree = degreeMap.get(id) || 0;
+    const size = normalizeSize(degreeMap.get(id) || 0);
+    return {
+      data: {
+        id,
+        label: id,
+        size
+      }
+    };
+  });
+
+  // Créer arêtes avec largeur normalisée, sans label
   const edges = Array.from(edgeMap.values()).map((edgeData, i) => ({
     data: {
       id: `link-${i}`,
       source: edgeData.source,
       target: edgeData.target,
       label: '',
-      /*label: edgeData.labels.join('\n'),*/
       width: normalizeWidth(edgeData.count) /*2 + (edgeData.count - 1) * 2*/
-
     }
   }));
-
   await nextTick();
 
   cy = cytoscape({
     container: cyContainer.value,
     elements: [...nodes, ...edges],
     layout: {
-      name: 'concentric',
-      concentric: node => node.degree(),
-      levelWidth: () => 2,
-      padding: 20,
-      animate: true
+      name: 'cose',
+      animate: true,
+      padding: 10,               // plus d’espace autour du graphe
+      nodeRepulsion: 100000000000000,       // double la répulsion pour plus d’espacement
+      idealEdgeLength: 200000,      // liens plus longs
+      edgeElasticity: 0.7,       // plus rigide (moins d’étirement)
+      gravity: 0.15,             // moins d’attraction vers le centre
+      numIter: 3000,             // plus d’itérations pour convergence
+      tile: true,
+      tilingPaddingVertical: 20,
+      tilingPaddingHorizontal: 20
     },
     style: [
       {
@@ -135,7 +164,9 @@ onMounted(async () => {
           'text-valign': 'center',
           color: '#fff',
           'text-outline-width': 2,
-          'text-outline-color': '#0074D9'
+          'text-outline-color': '#0074D9',
+          width: 'data(size)',
+          height: 'data(size)'
         }
       },
       {
@@ -146,10 +177,13 @@ onMounted(async () => {
           'target-arrow-shape': 'none',
           'target-arrow-color': 'none',
           'curve-style': 'bezier',
-          label: 'data(label)', // ici ce sera vide, donc rien affiché
+          label: 'data(label)', // vide => rien affiché
+          'font-size': '8px',
+          'text-rotation': 'autorotate',
+          'text-wrap': 'wrap',
+          'text-max-width': 80
         }
       }
-
     ]
   });
 
@@ -166,7 +200,7 @@ onMounted(async () => {
   cy.on('tap', 'node', evt => {
     const node = evt.target;
     const id = node.data('id').toUpperCase();
-    selectedProtein.value = proteinMap.get(id) || null;
+    selectedProtein.value = proteinIdMap.get(id) || null;
   });
 
   window.addEventListener('resize', handleResize);
