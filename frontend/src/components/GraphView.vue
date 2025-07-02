@@ -58,114 +58,120 @@ onMounted(async () => {
       id: protein.uniprot_id,
       label: protein.uniprot_id
     }
-  }))
-  /*  csvData.forEach((link, i) => {
-    console.log(`Edge ${i}:`, link.Protein1, link.Protein2 )
-  })*/
-  const proteinMap = new Map(fastaData.map(p => [p.uniprot_id.toUpperCase(), p]))
+  }));
 
-  //toutes les proteines du fasta sont stocke dans proteinIds
+  const proteinMap = new Map(fastaData.map(p => [p.uniprot_id.toUpperCase(), p]));
+
   const proteinIds = new Set(fastaData.map(p => (p.uniprot_id || '').trim().toUpperCase()));
-  // Edges from CSV crosslinks
-  const edges = csvData.map((link, i) => {
+
+  // Regroup edges by pair source-target
+  const edgeMap = new Map();
+
+  csvData.forEach((link) => {
     const source = (link.Protein1 || '').trim().toUpperCase();
     const target = (link.Protein2 || '').trim().toUpperCase();
-    const isValid = proteinIds.has(source) && proteinIds.has(target);
 
-    return {
-          data: {
-            valid: isValid,
-            id: `link-${i}`,
-            source,
-            target,
-            label: `Pos1: ${link.AbsPos1 }, Pos2: ${link.AbsPos2}`
-          }
-        }
-      })
-  console.log("proteinIds:", [...proteinIds].slice(0, 10)) // aperçu des IDs uniques
-  console.log("First few links:", toRaw(csvData).slice(0, 5))
+    if (!proteinIds.has(source) || !proteinIds.has(target)) return;
 
-  /*
-    console.log("FASTA uniprot_ids:", fastaData.map(p => p.uniprot_id))
-    console.log("CSV Protein1 examples:", csvData.slice(0, 5).map(d => d.Protein1))
-    console.log("CSV Protein2 examples:", csvData.slice(0, 5).map(d => d.Protein2))
-  */
+    // Graphe non orienté : trier pour éviter doublons
+    const key = [source, target].sort().join('--');
 
-  const invalidEdges = edges.filter(e => !e.data.valid)
-  if (invalidEdges.length > 0) {
-    console.warn('Invalid edges found:', invalidEdges);
-  }
+    if (!edgeMap.has(key)) {
+      edgeMap.set(key, {
+        count: 0,
+        source,
+        target,
+        labels: []
+      });
+    }
 
-  const validEdges = edges.filter(e => e.data.valid);
-  console.log('validEdges:', validEdges);
+    const edgeData = edgeMap.get(key);
+    edgeData.count += 1;
+    edgeData.labels.push(`Pos1: ${link.AbsPos1}, Pos2: ${link.AbsPos2}`);
+  });
+  const counts = Array.from(edgeMap.values()).map(e => e.count);
+  const minCount = Math.min(...counts);
+  const maxCount = Math.max(...counts);
+
+  const minWidth = 2;
+  const maxWidth = 8;
+
+  const normalizeWidth = (count) => {
+    if (maxCount === minCount) return (minWidth + maxWidth) / 2; // cas où tous égaux
+    return minWidth + ((count - minCount) / (maxCount - minCount)) * (maxWidth - minWidth);
+  };
+
+  // Construire edges uniques avec largeur variable
+  const edges = Array.from(edgeMap.values()).map((edgeData, i) => ({
+    data: {
+      id: `link-${i}`,
+      source: edgeData.source,
+      target: edgeData.target,
+      label: '',
+      /*label: edgeData.labels.join('\n'),*/
+      width: normalizeWidth(edgeData.count) /*2 + (edgeData.count - 1) * 2*/
+
+    }
+  }));
 
   await nextTick();
-/*
-  setTimeout(() => {
-    if (cy) {
+
+  cy = cytoscape({
+    container: cyContainer.value,
+    elements: [...nodes, ...edges],
+    layout: {
+      name: 'concentric',
+      concentric: node => node.degree(),
+      levelWidth: () => 2,
+      padding: 20,
+      animate: true
+    },
+    style: [
+      {
+        selector: 'node',
+        style: {
+          label: 'data(label)',
+          'background-color': '#0074D9',
+          'text-valign': 'center',
+          color: '#fff',
+          'text-outline-width': 2,
+          'text-outline-color': '#0074D9'
+        }
+      },
+      {
+        selector: 'edge',
+        style: {
+          width: 'data(width)',
+          'line-color': '#ccc',
+          'target-arrow-shape': 'none',
+          'target-arrow-color': 'none',
+          'curve-style': 'bezier',
+          label: 'data(label)', // ici ce sera vide, donc rien affiché
+        }
+      }
+
+    ]
+  });
+
+  cy.ready(() => {
+    forceCanvasAlignment();
+
+    setTimeout(() => {
+      forceCanvasAlignment();
       cy.resize();
       cy.fit();
-    }
-  }, 100);
-*/
-    cy = cytoscape({
-      container: cyContainer.value,
-      elements: [...nodes, ...validEdges],
-      layout: {
-        name: 'concentric',
-        concentric: node => node.degree(),
-        levelWidth: () => 2,
-        padding: 20,
-        animate: true
-      },
-      style: [
-        {
-          selector: 'node',
-          style: {
-            label: 'data(label)',
-            'background-color': '#0074D9',
-            'text-valign': 'center',
-            'color': '#fff',
-            'text-outline-width': 2,
-            'text-outline-color': '#0074D9'
-          }
-        },
-        {
-          selector: 'edge',
-          style: {
-            width: 2,
-            'line-color': '#ccc',
-            'target-arrow-color': '#ccc',
-            'target-arrow-shape': 'triangle',
-            'curve-style': 'bezier',
-            label: 'data(label)',
-            'font-size': '8px',
-            'text-rotation': 'autorotate'
-          }
-        }
-      ]
-    });
+    }, 100);
+  });
 
+  cy.on('tap', 'node', evt => {
+    const node = evt.target;
+    const id = node.data('id').toUpperCase();
+    selectedProtein.value = proteinMap.get(id) || null;
+  });
 
-
-    cy.ready(() =>
-     {
-       forceCanvasAlignment();
-
-       setTimeout(() => {
-         forceCanvasAlignment();
-         cy.resize();
-         cy.fit();
-       }, 100);
-     });
-    cy.on('tap', 'node', evt => {
-      const node = evt.target
-      const id = node.data('id').toUpperCase()
-      selectedProtein.value = proteinMap.get(id) || null
-    });
-    window.addEventListener('resize', handleResize);
-
+  window.addEventListener('resize', handleResize);
 });
+
 
 onBeforeUnmount(() => {
   if(cy) cy.destroy();
