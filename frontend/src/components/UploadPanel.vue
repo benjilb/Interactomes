@@ -39,11 +39,11 @@
     </button>
 
     <!-- GraphView affiché dynamiquement -->
-
+  </div>
     <div v-if="showGraph">
       <GraphView/>
     </div>
-  </div>
+
 
 
 </template>
@@ -95,3 +95,7 @@ const generateGraphTest = async () => {
 }
 
 </script>
+
+<style scoped>
+
+</style>
