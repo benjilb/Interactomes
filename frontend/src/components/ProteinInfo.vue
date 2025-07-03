@@ -11,8 +11,8 @@
         <pre class="sequence">{{ protein.sequence }}</pre>
       </li>
       <li><strong>Number of Crosslinks:</strong> {{ crosslinkCount }}</li>
-      <li class="crosslink-sub">- Crosslinks Intra-protéine: {{ intraCount }}</li>
-      <li class="crosslink-sub">- Crosslinks Inter-protéine: {{ interCount }}</li>    </ul>
+      <li class="crosslink-sub">- Intra-protein Crosslinks: {{ intraCount }}</li>
+      <li class="crosslink-sub">- Inter-protein Crosslinks: {{ interCount }}</li>    </ul>
   </div>
 
 

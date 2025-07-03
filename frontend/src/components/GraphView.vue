@@ -1,5 +1,4 @@
 <template>
-
   <div class="graph-page">
     <div class="protein-info-container">
       <ProteinInfo v-if="selectedProtein"
@@ -24,14 +23,20 @@
 
 <script setup>
 
-import {ref,onMounted, onBeforeUnmount, nextTick} from 'vue'
+import {ref,onMounted, watch, onBeforeUnmount, nextTick} from 'vue'
+import { useDataStore } from '@/store/dataStore'
+import ProteinInfo from '@/components/ProteinInfo.vue'
 import cytoscape from 'cytoscape';
 import coseBilkent from 'cytoscape-cose-bilkent';
 
 cytoscape.use(coseBilkent);
-import { useDataStore } from '@/store/dataStore'
-import ProteinInfo from '@/components/ProteinInfo.vue'
 
+const props = defineProps({
+  refreshTrigger: {
+    type: Number,
+    default: 0
+  }
+})
 
 const cyContainer = ref(null);
 let cy = null;
@@ -41,9 +46,6 @@ const crosslinkCount = ref(0);
 const crosslinkIntraCount = ref(0);
 const crosslinkInterCount = ref(0);
 const totalCrosslinkCount = ref(0);
-
-
-
 
 const handleResize = () => {
   if (cy) {
@@ -63,9 +65,11 @@ const forceCanvasAlignment = () => {
     canvas.style.transform = 'none';
   });
 };
-
-
-onMounted(async () => {
+const generateGraph = async () => {
+  if (cy) {
+    cy.destroy();
+    cy = null;
+  }
   const fastaData = store.fastaData;
   const csvData = store.csvData;
 
@@ -102,12 +106,8 @@ onMounted(async () => {
     } else {
       edgeMap.get(key).count++;
     }
-
   });
-
   console.log(`Total protéines impliquées : ${involvedProteinIds.size}`);
-
-    // Création des nœuds uniquement pour les protéines impliquées
 
   // Calculer degré pondéré des protéines (nœuds)
   const degreeMap = new Map();
@@ -245,7 +245,6 @@ onMounted(async () => {
 
     selectedProtein.value = fastaMap.get(id) || null;
 
-    // Calcul du vrai nombre de crosslinks depuis csvData brut
     crosslinkCount.value = validLinks.filter(link =>
         link.Protein1.trim().toUpperCase() === id ||
         link.Protein2.trim().toUpperCase() === id
@@ -261,9 +260,17 @@ onMounted(async () => {
         (link.Protein2 || '').trim().toUpperCase() === id
     ).length;
   });
+
+}
+
+onMounted(async () => {
+  generateGraph();
   window.addEventListener('resize', handleResize);
 });
 
+watch(() => props.refreshTrigger, () => {
+  generateGraph()
+})
 
 onBeforeUnmount(() => {
   if(cy) cy.destroy();
@@ -311,5 +318,4 @@ onBeforeUnmount(() => {
   font-size: 1.1em;
   color: #333;
 }
-
 </style>
