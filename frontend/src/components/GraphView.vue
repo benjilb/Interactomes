@@ -1,22 +1,35 @@
 <template>
 
   <div class="graph-page">
-    <ProteinInfo :protein="selectedProtein" />
+    <div class="protein-info-container">
+      <ProteinInfo v-if="selectedProtein"
+                   :protein="selectedProtein"
+                   :crosslinkCount="crosslinkCount"
+                   :intraCount="crosslinkIntraCount"
+                   :interCount="crosslinkInterCount"
+      />
+    </div>
 
     <div class="graph-container">
       <h3>Crosslink Graph</h3>
       <div ref="cyContainer" class="cytoscape cytoscape-graph"></div>
-
+      <div class="total-crosslinks">
+        <p>Total crosslinks : {{ totalCrosslinkCount }}</p>
+      </div>
     </div>
+
   </div>
+
 </template>
 
 <script setup>
 
 import {ref,onMounted, onBeforeUnmount, nextTick} from 'vue'
-import cytoscape from 'cytoscape'
+import cytoscape from 'cytoscape';
+import coseBilkent from 'cytoscape-cose-bilkent';
+
+cytoscape.use(coseBilkent);
 import { useDataStore } from '@/store/dataStore'
-import { toRaw } from 'vue'
 import ProteinInfo from '@/components/ProteinInfo.vue'
 
 
@@ -24,6 +37,12 @@ const cyContainer = ref(null);
 let cy = null;
 const store = useDataStore();
 const selectedProtein = ref(null)
+const crosslinkCount = ref(0);
+const crosslinkIntraCount = ref(0);
+const crosslinkInterCount = ref(0);
+const totalCrosslinkCount = ref(0);
+
+
 
 
 const handleResize = () => {
@@ -33,6 +52,7 @@ const handleResize = () => {
     cy.center();
   }
 };
+
 const forceCanvasAlignment = () => {
   if (!cy || !cyContainer.value) return;
 
@@ -43,6 +63,8 @@ const forceCanvasAlignment = () => {
     canvas.style.transform = 'none';
   });
 };
+
+
 onMounted(async () => {
   const fastaData = store.fastaData;
   const csvData = store.csvData;
@@ -51,25 +73,28 @@ onMounted(async () => {
     console.warn('No data loaded for graph');
     return;
   }
-
-  // Ensemble des protéines (IDs en majuscule)
-  const proteinIds = new Set(fastaData.map(p => (p.uniprot_id || '').trim().toUpperCase()));
-
-  // Map pour retrouver la protéine par ID
-  const proteinIdMap = new Map(fastaData.map(p => [p.uniprot_id.toUpperCase(), p]));
-
-  // Regrouper les arêtes entre mêmes protéines, compter les crosslinks
   const edgeMap = new Map();
+  const involvedProteinIds = new Set();
+  // Map FASTA par id en majuscule pour vérif rapide
+  const fastaMap = new Map(fastaData.map(p => [p.uniprot_id.toUpperCase(), p]));
 
-  csvData.forEach(link => {
+  const validLinks = csvData.filter(link => {
+    const source = (link.Protein1 || '').trim().toUpperCase();
+    const target = (link.Protein2 || '').trim().toUpperCase();
+    return source && target && fastaMap.has(source) && fastaMap.has(target);
+  });
+  totalCrosslinkCount.value = validLinks.length;
+
+  validLinks.forEach(link => {
     const source = (link.Protein1 || '').trim().toUpperCase();
     const target = (link.Protein2 || '').trim().toUpperCase();
 
-    if (!proteinIds.has(source) || !proteinIds.has(target)) {
-      return; // lien non valide
-    }
+    if (!source || !target) return;
+    if (!fastaMap.has(source) || !fastaMap.has(target)) return;
 
-    // Clé unique indépendamment de l’ordre source/target (pour graphe non orienté)
+    involvedProteinIds.add(source);
+    involvedProteinIds.add(target);
+
     const key = source < target ? `${source}|${target}` : `${target}|${source}`;
 
     if (!edgeMap.has(key)) {
@@ -77,20 +102,12 @@ onMounted(async () => {
     } else {
       edgeMap.get(key).count++;
     }
+
   });
 
-  // Normaliser largeur des arêtes
-  const counts = Array.from(edgeMap.values()).map(e => e.count);
-  const minCount = Math.min(...counts);
-  const maxCount = Math.max(...counts);
-  const minWidth = 2;
-  const maxWidth = 8;
+  console.log(`Total protéines impliquées : ${involvedProteinIds.size}`);
 
-
-  const normalizeWidth = (count) => {
-    if (maxCount === minCount) return (minWidth + maxWidth) / 2;
-    return minWidth + ((count - minCount) / (maxCount - minCount)) * (maxWidth - minWidth);
-  };
+    // Création des nœuds uniquement pour les protéines impliquées
 
   // Calculer degré pondéré des protéines (nœuds)
   const degreeMap = new Map();
@@ -102,30 +119,44 @@ onMounted(async () => {
     degreeMap.set(target, (degreeMap.get(target) || 0) + count);
   });
 
-  // Normaliser taille des nœuds
+  // Normalisation des tailles des nœuds
   const degrees = Array.from(degreeMap.values());
   const minDegree = Math.min(...degrees);
   const maxDegree = Math.max(...degrees);
-  const minSize = 20;
-  const maxSize = 50;
-  const normalizeSize = (deg) => {
-    if (maxDegree === minDegree) return (minSize + maxSize) / 2;
-    return minSize + ((deg - minDegree) / (maxDegree - minDegree)) * (maxSize - minSize);
+  const normalizeSize = degree => {
+    const minSize = 20;
+    const maxSize = 60;
+    if (maxDegree === minDegree) return minSize;
+    return minSize + ((degree - minDegree) / (maxDegree - minDegree)) * (maxSize - minSize);
   };
 
   // Créer nœuds avec taille normalisée
-  const nodes = fastaData.map(protein => {
-    const id = protein.uniprot_id.toUpperCase();
-    const degree = degreeMap.get(id) || 0;
-    const size = normalizeSize(degreeMap.get(id) || 0);
-    return {
-      data: {
-        id,
-        label: id,
-        size
-      }
-    };
-  });
+  const nodes = Array.from(involvedProteinIds)
+      .filter(id => fastaMap.has(id))
+      .map(id => {
+        const degree = degreeMap.get(id) || 0;
+        const size = normalizeSize(degree);
+        return {
+          data: {
+            id,
+            label: id,
+            size
+          }
+        };
+      });
+
+
+  // Normaliser largeur des arêtes
+  const counts = Array.from(edgeMap.values()).map(e => e.count);
+  const minCount = Math.min(...counts);
+  const maxCount = Math.max(...counts);
+  const minWidth = 2;
+  const maxWidth = 8;
+  const normalizeWidth = (count) => {
+    if (maxCount === minCount) return (minWidth + maxWidth) / 2;
+    return minWidth + ((count - minCount) / (maxCount - minCount)) * (maxWidth - minWidth);
+  };
+
 
   // Créer arêtes avec largeur normalisée, sans label
   const edges = Array.from(edgeMap.values()).map((edgeData, i) => ({
@@ -137,23 +168,29 @@ onMounted(async () => {
       width: normalizeWidth(edgeData.count) /*2 + (edgeData.count - 1) * 2*/
     }
   }));
+
   await nextTick();
 
   cy = cytoscape({
     container: cyContainer.value,
     elements: [...nodes, ...edges],
     layout: {
-      name: 'cose',
-      animate: true,
-      padding: 10,               // plus d’espace autour du graphe
-      nodeRepulsion: 100000000000000,       // double la répulsion pour plus d’espacement
-      idealEdgeLength: 200000,      // liens plus longs
-      edgeElasticity: 0.7,       // plus rigide (moins d’étirement)
-      gravity: 0.15,             // moins d’attraction vers le centre
-      numIter: 3000,             // plus d’itérations pour convergence
+      name: 'cose-bilkent',
+      animate: 'end',
+      componentSpacing: 200,
+      animationDuration: 1000,
+      fit: false,
+      padding: 100,
+      randomize: false,
+      nodeRepulsion: 45000,            // Augmente l'espacement entre nœuds
+      idealEdgeLength: 150,            // Longueur cible des liens
+      edgeElasticity: 0.4,             // Souplesse des liens
+      nestingFactor: 0.9,              // Compacité des clusters
+      gravity: 0.25,                   // Gravité vers le centre
+      numIter: 3000,
       tile: true,
-      tilingPaddingVertical: 20,
-      tilingPaddingHorizontal: 20
+      tilingPaddingVertical: 10,
+      tilingPaddingHorizontal: 10,
     },
     style: [
       {
@@ -175,13 +212,7 @@ onMounted(async () => {
           width: 'data(width)',
           'line-color': '#ccc',
           'target-arrow-shape': 'none',
-          'target-arrow-color': 'none',
-          'curve-style': 'bezier',
-          label: 'data(label)', // vide => rien affiché
-          'font-size': '8px',
-          'text-rotation': 'autorotate',
-          'text-wrap': 'wrap',
-          'text-max-width': 80
+          'curve-style': 'bezier'
         }
       }
     ]
@@ -193,16 +224,43 @@ onMounted(async () => {
     setTimeout(() => {
       forceCanvasAlignment();
       cy.resize();
-      cy.fit();
+
+      const baseZoom = 0.31;
+      const zoomFactor = cy.nodes().length < 50 ? 1.5 : 1.1;
+
+      cy.zoom(baseZoom * zoomFactor);
+      const offsetX = (cy.width() / 2);
+      const offsetY = cy.height() / 2;
+
+      cy.pan({ x: offsetX, y: offsetY });
+
     }, 100);
   });
+
+
 
   cy.on('tap', 'node', evt => {
     const node = evt.target;
     const id = node.data('id').toUpperCase();
-    selectedProtein.value = proteinIdMap.get(id) || null;
-  });
 
+    selectedProtein.value = fastaMap.get(id) || null;
+
+    // Calcul du vrai nombre de crosslinks depuis csvData brut
+    crosslinkCount.value = validLinks.filter(link =>
+        link.Protein1.trim().toUpperCase() === id ||
+        link.Protein2.trim().toUpperCase() === id
+    ).length;
+
+    crosslinkIntraCount.value = validLinks.filter(link =>
+        (link.Protein1 || '').trim().toUpperCase() === id &&
+        (link.Protein2 || '').trim().toUpperCase() === id
+    ).length;
+
+    crosslinkInterCount.value = validLinks.filter(link =>
+        (link.Protein1 || '').trim().toUpperCase() === id ^
+        (link.Protein2 || '').trim().toUpperCase() === id
+    ).length;
+  });
   window.addEventListener('resize', handleResize);
 });
 
@@ -217,46 +275,41 @@ onBeforeUnmount(() => {
 .graph-page {
   display: flex;
   height: calc(100vh - 50px);
+  margin-right: 300px;
 }
-/*.graph-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  min-width: 500px;
-  max-width: 100%;
-  height: 100%;
-  overflow: visible;
-}*/
+.protein-info-container {
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
+  overflow-y: auto;
+  padding: 10px;
+}
 
 .graph-container {
   flex: 1;
-  min-width: 600px; /* taille minimum */
-  max-width: 900px; /* ou la taille max souhaitée */
-  height: 600px; /* hauteur fixe */
+  width: 1000px;
+  height: 600px;
   position: relative;
   overflow: visible; /* éviter débordements */
 }
-/*
+
 .cytoscape {
   flex: 1;
-  width: 100%;
-  min-height: 0;
-  border: 3px solid #ccc;
-  position: relative;
-  transform-style: preserve-3d;
-  left: 0;
-
-}*/
-
-.cytoscape {
   width: 100%;
   height: 100%; /* prendre toute la hauteur */
   border: 3px solid #ccc;
   position: relative;
-  left: 0;
+  transform-style: preserve-3d;
 }
 .cytoscape-graph canvas {
   left: 0 !important;
 }
+
+.total-crosslinks {
+  margin-top: 10px;
+  font-weight: bold;
+  font-size: 1.1em;
+  color: #333;
+}
+
 </style>
