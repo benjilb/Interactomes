@@ -10,7 +10,14 @@
       <li><strong>Sequence:</strong>
         <pre class="sequence">{{ protein.sequence }}</pre>
       </li>
-    </ul>
+      <li><strong>Number of Crosslinks:</strong> {{ crosslinkCount }}</li>
+      <li class="crosslink-sub">- Crosslinks Intra-protéine: {{ intraCount }}</li>
+      <li class="crosslink-sub">- Crosslinks Inter-protéine: {{ interCount }}</li>    </ul>
+  </div>
+
+
+  <div v-else class="placeholder">
+    <p>Sélectionnez une protéine pour voir les détails.</p>
   </div>
 </template>
 
@@ -19,6 +26,18 @@ defineProps({
   protein: {
     type: Object,
     default: null
+  },
+  crosslinkCount: {
+    type: Number,
+    default: 0
+  },
+  intraCount: {
+    type: Number,
+    default: 0
+  },
+  interCount: {
+    type: Number,
+    default: 0
   }
 })
 </script>
@@ -42,12 +61,26 @@ defineProps({
   text-align: left; /* Sécurité supplémentaire pour les li */
 }
 
+
 .sequence {
   white-space: pre-wrap;
   word-break: break-word;
   padding: 0.5rem;
   border-radius: 4px;
-
+  background: #3e3e47;
+  max-height: 200px;
+  overflow: auto;
+}
+.placeholder {
+  padding: 1rem;
+  width: 300px;
+  margin-top: 30px;
+  color: #777;
+}
+.crosslink-sub {
+  margin-left: 20px;
+  font-size: 0.9em;
+  color: gray;
 }
 
 </style>
