@@ -26,33 +26,31 @@
 
 
     <div class="button-section">
-      <button
-          :disabled="!canGenerate"
-          @click="showGraph = true"
-      >
-        Generate Graph
-      </button>
+      <button :disabled="!canGenerate" @click="generateGraph">Generate Graph</button>
 
-      <button @click="generateGraphTest">
-        Generate Graph Test
-      </button>
+
+      <button @click="generateGraphTest">Generate Graph Test</button>
+
     </div>
   </div>
 
   <div v-if="showGraph">
-    <GraphView />
+    <GraphView :refreshTrigger="refreshTrigger" />
   </div>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
-import { parseCsv } from '@/utils/CsvParser'
-import { parseFasta } from '@/utils/FastaParser'
 import { useDataStore } from '@/store/dataStore'
 import GraphView from "@/components/GraphView.vue";
+import { parseCsv } from '@/utils/CsvParser'
+import { parseFasta } from '@/utils/FastaParser'
 
 const store = useDataStore()
 const showGraph = ref(false)
+
+const refreshTrigger = ref(0)
+
 
 const handleFastaUpload = async (e) => {
   const file = e.target.files[0]
@@ -70,6 +68,12 @@ const handleCsvUpload = async (e) => {
 
 const canGenerate = computed(() => store.isFastaLoaded && store.isCsvLoaded)
 
+
+const generateGraph = () => {
+  refreshTrigger.value++  // Incrémente pour déclencher la maj dans GraphView
+  showGraph.value = true
+}
+
 const generateGraphTest = async () => {
   try {
     const fastaResponse = await fetch('/test-data/uniprotkb_cyanophora_paradoxa_2024_02_20.fasta')
@@ -78,7 +82,7 @@ const generateGraphTest = async () => {
     const csvResponse = await fetch('/test-data/cyanophoraXL_combmethod bis.csv')
     store.csvData = parseCsv(await csvResponse.text())
 
-    showGraph.value = true
+    generateGraph()
   } catch (error) {
     console.error("Erreur lors du chargement des fichiers de test :", error)
   }
