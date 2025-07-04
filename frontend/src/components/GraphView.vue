@@ -6,6 +6,7 @@
                    :crosslinkCount="crosslinkCount"
                    :intraCount="crosslinkIntraCount"
                    :interCount="crosslinkInterCount"
+                   :uniqueCount="uniqueCrosslinkCount"
       />
     </div>
 
@@ -46,6 +47,7 @@ const crosslinkCount = ref(0);
 const crosslinkIntraCount = ref(0);
 const crosslinkInterCount = ref(0);
 const totalCrosslinkCount = ref(0);
+const uniqueCrosslinkCount = ref(0);
 
 const handleResize = () => {
   if (cy) {
@@ -245,20 +247,43 @@ const generateGraph = async () => {
 
     selectedProtein.value = fastaMap.get(id) || null;
 
+
     crosslinkCount.value = validLinks.filter(link =>
         link.Protein1.trim().toUpperCase() === id ||
         link.Protein2.trim().toUpperCase() === id
     ).length;
 
-    crosslinkIntraCount.value = validLinks.filter(link =>
-        (link.Protein1 || '').trim().toUpperCase() === id &&
-        (link.Protein2 || '').trim().toUpperCase() === id
-    ).length;
+    const uniqueSet = new Set();
+    let intraUnique = 0;
+    let interUnique = 0;
 
-    crosslinkInterCount.value = validLinks.filter(link =>
-        (link.Protein1 || '').trim().toUpperCase() === id ^
-        (link.Protein2 || '').trim().toUpperCase() === id
-    ).length;
+    validLinks.forEach(link => {
+      const p1 = (link.Protein1 || '').trim().toUpperCase();
+      const p2 = (link.Protein2 || '').trim().toUpperCase();
+      const pos1 = parseInt(link.AbsPos1);
+      const pos2 = parseInt(link.AbsPos2);
+
+      if (p1 !== id && p2 !== id) return;
+
+      const [protA, protB] = p1 < p2 ? [p1, p2] : [p2, p1];
+      const [absA, absB] = pos1 < pos2 ? [pos1, pos2] : [pos2, pos1];
+
+      const key = `${protA}|${protB}|${absA}|${absB}`;
+
+      if (!uniqueSet.has(key)) {
+        uniqueSet.add(key);
+
+        if (protA === protB && protA === id) {
+          intraUnique++;
+        } else if (protA === id || protB === id) {
+          interUnique++;
+        }
+      }
+    });
+    uniqueCrosslinkCount.value = uniqueSet.size;
+    crosslinkIntraCount.value = intraUnique;
+    crosslinkInterCount.value = interUnique;
+
   });
 
 }
