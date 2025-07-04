@@ -12,7 +12,11 @@
 
     <div class="graph-container">
       <h3>Crosslink Graph</h3>
-      <div ref="cyContainer" class="cytoscape cytoscape-graph"></div>
+
+      <div id="cytoscape-wrapper">
+        <div ref="cyContainer" class="cytoscape cytoscape-graph"></div>
+        <div id="sequence-overlay"></div>
+      </div>
       <div class="total-crosslinks">
         <p>Total crosslinks : {{ totalCrosslinkCount }}</p>
       </div>
@@ -242,11 +246,17 @@ const generateGraph = async () => {
 
 
   cy.on('tap', 'node', evt => {
+    evt.preventDefault?.(); //a essayer
     const node = evt.target;
     const id = node.data('id').toUpperCase();
 
     selectedProtein.value = fastaMap.get(id) || null;
+    const fasta = fastaMap.get(id);
 
+    if (!fasta || !fasta.sequence) {
+      console.warn(`Séquence introuvable pour ${id}`);
+      return;
+    }
 
     crosslinkCount.value = validLinks.filter(link =>
         link.Protein1.trim().toUpperCase() === id ||
@@ -284,9 +294,107 @@ const generateGraph = async () => {
     crosslinkIntraCount.value = intraUnique;
     crosslinkInterCount.value = interUnique;
 
+
+
+    const sequenceLength = fasta.sequence.length;
+    const position = node.renderedPosition();
+
+    console.log(`Click sur ${id}, longueur ${sequenceLength}`, position);
+
+    showSequenceTrack(position, sequenceLength, id, validLinks);
   });
 
 }
+function showSequenceTrack(position, length, proteinId, validLinks) {
+  const container = document.getElementById('sequence-overlay');
+  container.innerHTML = '';
+
+  const scaleWidth = 400;
+  const pxPerAA = scaleWidth / length;
+
+  const line = document.createElement('div');
+  line.style.position = 'absolute';
+  line.style.left = `${position.x - scaleWidth/2}px`;
+  line.style.top = `${position.y + 30}px`;
+  line.style.width = `${scaleWidth}px`;
+  line.style.height = '2px';
+  /*line.style.background = 'black';*/
+  line.style.background = 'red';  // Rouge vif pour test
+
+  container.appendChild(line);
+
+  // Graduation tous les 100 AA
+  for (let i = 0; i <= length; i += 100) {
+    const mark = document.createElement('div');
+    mark.style.position = 'absolute';
+    mark.style.left = `${position.x - scaleWidth/2 + i * pxPerAA}px`;
+    mark.style.top = `${position.y + 35}px`;
+    mark.innerText = i;
+    mark.style.fontSize = '10px';
+    container.appendChild(mark);
+  }
+
+  // Dernière position
+  const finalMark = document.createElement('div');
+  finalMark.style.position = 'absolute';
+  finalMark.style.left = `${position.x - scaleWidth/2 + length * pxPerAA}px`;
+  finalMark.style.top = `${position.y + 35}px`;
+  finalMark.innerText = length;
+  finalMark.style.fontSize = '10px';
+  container.appendChild(finalMark);
+
+  // Afficher les crosslinks
+  drawCrosslinks(proteinId, position, pxPerAA, validLinks);
+}
+
+
+function drawCrosslinks(proteinId, position, pxPerAA, validLinks) {
+  const container = document.getElementById('sequence-overlay');
+
+  validLinks.forEach(link => {
+    const p1 = link.Protein1.toUpperCase().trim();
+    const p2 = link.Protein2.toUpperCase().trim();
+    const pos1 = parseInt(link.AbsPos1);
+    const pos2 = parseInt(link.AbsPos2);
+
+    if (p1 === proteinId && p2 === proteinId) {
+      // Intra-protéine : arc entre pos1 et pos2
+      const arc = document.createElement('div');
+      const startX = position.x - 200 + pos1 * pxPerAA;
+      const endX = position.x - 200 + pos2 * pxPerAA;
+      const width = Math.abs(endX - startX);
+
+      arc.style.position = 'absolute';
+      arc.style.left = `${Math.min(startX, endX)}px`;
+      arc.style.top = `${position.y + 10}px`;
+      arc.style.width = `${width}px`;
+      arc.style.height = '20px';
+      arc.style.borderTop = '2px solid purple';
+      arc.style.borderRadius = `${width/2}px / 10px`;
+      container.appendChild(arc);
+    }
+
+    if (p1 === proteinId && p2 !== proteinId) {
+
+      const targetNode = cy.nodes().filter(n => n.data('id').toUpperCase() === p2);
+      if (targetNode.length) {
+        const targetPos = targetNode[0].renderedPosition();
+        const x1 = position.x - 200 + pos1 * pxPerAA;
+        const y1 = position.y + 30;
+
+        const line = document.createElement('div');
+        line.style.position = 'absolute';
+        line.style.left = `${Math.min(x1, targetPos.x)}px`;
+        line.style.top = `${Math.min(y1, targetPos.y)}px`;
+        line.style.width = `${Math.abs(targetPos.x - x1)}px`;
+        line.style.height = `${Math.abs(targetPos.y - y1)}px`;
+        line.style.border = '1px dashed green';
+        container.appendChild(line);
+      }
+    }
+  });
+}
+
 
 onMounted(async () => {
   generateGraph();
@@ -335,6 +443,22 @@ onBeforeUnmount(() => {
 }
 .cytoscape-graph canvas {
   left: 0 !important;
+}
+
+#cytoscape-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+
+#sequence-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 .total-crosslinks {
