@@ -10,9 +10,14 @@
       <li><strong>Sequence:</strong>
         <pre class="sequence">{{ protein.sequence }}</pre>
       </li>
-      <li><strong>Number of Crosslinks:</strong> {{ crosslinkCount }}</li>
+      <li><strong>Number of unique crosslinks: </strong> {{ uniqueCount }}</li>
       <li class="crosslink-sub">- Intra-protein Crosslinks: {{ intraCount }}</li>
-      <li class="crosslink-sub">- Inter-protein Crosslinks: {{ interCount }}</li>    </ul>
+      <li class="crosslink-sub">- Inter-protein Crosslinks: {{ interCount }}</li>
+      <li><strong>Number of Crosslinks with copy:</strong> {{ crosslinkCount }}</li>
+
+
+
+    </ul>
   </div>
 
 
@@ -36,6 +41,10 @@ defineProps({
     default: 0
   },
   interCount: {
+    type: Number,
+    default: 0
+  },
+  uniqueCount: {
     type: Number,
     default: 0
   }
