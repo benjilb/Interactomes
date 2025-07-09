@@ -71,7 +71,10 @@ const forceCanvasAlignment = () => {
     canvas.style.transform = 'none';
   });
 };
+
+
 const generateGraph = async () => {
+
   if (cy) {
     cy.destroy();
     cy = null;
@@ -246,9 +249,20 @@ const generateGraph = async () => {
 
 
   cy.on('tap', 'node', evt => {
-    evt.preventDefault?.(); //a essayer
+    evt.preventDefault?.();
+
+    // Réaffiche tous les noeuds et arêtes avant de gérer le clic
+    cy.nodes().style('display', 'element').style('width', '40px').style('height', '40px').style('opacity', 1);
+    cy.edges().style('display', 'element').style('opacity', 1);
+
     const node = evt.target;
     const id = node.data('id').toUpperCase();
+
+    if (selectedProtein.value && selectedProtein.value.uniprot_id.toUpperCase() === id) {
+      // Si on reclique sur la protéine déjà sélectionnée, on ferme la frise et restaure
+      hideSequenceTrackAndRestore();
+      return;
+    }
 
     selectedProtein.value = fastaMap.get(id) || null;
     const fasta = fastaMap.get(id);
@@ -258,98 +272,178 @@ const generateGraph = async () => {
       return;
     }
 
-    crosslinkCount.value = validLinks.filter(link =>
-        link.Protein1.trim().toUpperCase() === id ||
-        link.Protein2.trim().toUpperCase() === id
-    ).length;
+    // Animation disparition du noeud (taille + opacité)
+    node.animate({
+      style: { 'width': 0, 'height': 0, 'opacity': 0 }
+    }, {
+      duration: 500,
+      complete: () => {
+        // Cache le noeud et ses arêtes
+        node.style('display', 'none');
+        node.connectedEdges().style('display', 'none');
 
-    const uniqueSet = new Set();
-    let intraUnique = 0;
-    let interUnique = 0;
+        // Calculs crosslink (inchangés)
+        crosslinkCount.value = validLinks.filter(link =>
+            link.Protein1.trim().toUpperCase() === id ||
+            link.Protein2.trim().toUpperCase() === id
+        ).length;
 
-    validLinks.forEach(link => {
-      const p1 = (link.Protein1 || '').trim().toUpperCase();
-      const p2 = (link.Protein2 || '').trim().toUpperCase();
-      const pos1 = parseInt(link.AbsPos1);
-      const pos2 = parseInt(link.AbsPos2);
+        const uniqueSet = new Set();
+        let intraUnique = 0;
+        let interUnique = 0;
 
-      if (p1 !== id && p2 !== id) return;
+        validLinks.forEach(link => {
+          const p1 = (link.Protein1 || '').trim().toUpperCase();
+          const p2 = (link.Protein2 || '').trim().toUpperCase();
+          const pos1 = parseInt(link.AbsPos1);
+          const pos2 = parseInt(link.AbsPos2);
 
-      const [protA, protB] = p1 < p2 ? [p1, p2] : [p2, p1];
-      const [absA, absB] = pos1 < pos2 ? [pos1, pos2] : [pos2, pos1];
+          if (p1 !== id && p2 !== id) return;
 
-      const key = `${protA}|${protB}|${absA}|${absB}`;
+          const [protA, protB] = p1 < p2 ? [p1, p2] : [p2, p1];
+          const [absA, absB] = pos1 < pos2 ? [pos1, pos2] : [pos2, pos1];
 
-      if (!uniqueSet.has(key)) {
-        uniqueSet.add(key);
+          const key = `${protA}|${protB}|${absA}|${absB}`;
 
-        if (protA === protB && protA === id) {
-          intraUnique++;
-        } else if (protA === id || protB === id) {
-          interUnique++;
-        }
+          if (!uniqueSet.has(key)) {
+            uniqueSet.add(key);
+
+            if (protA === protB && protA === id) {
+              intraUnique++;
+            } else if (protA === id || protB === id) {
+              interUnique++;
+            }
+          }
+        });
+        uniqueCrosslinkCount.value = uniqueSet.size;
+        crosslinkIntraCount.value = intraUnique;
+        crosslinkInterCount.value = interUnique;
+
+        const sequenceLength = fasta.sequence.length;
+        const position = node.renderedPosition();
+
+        console.log(`Click sur ${id}, longueur ${sequenceLength}`, position);
+
+        // Affiche la frise (positionné sur le noeud) avec fade-in
+        showSequenceTrack(position, sequenceLength, id, validLinks);
+        const container = document.getElementById('sequence-overlay');
+        container.style.opacity = 0;
+        container.style.transition = 'opacity 0.5s ease';
+        void container.offsetWidth; // force reflow pour activer transition
+        container.style.opacity = 1;
       }
     });
-    uniqueCrosslinkCount.value = uniqueSet.size;
-    crosslinkIntraCount.value = intraUnique;
-    crosslinkInterCount.value = interUnique;
-
-
-
-    const sequenceLength = fasta.sequence.length;
-    const position = node.renderedPosition();
-
-    console.log(`Click sur ${id}, longueur ${sequenceLength}`, position);
-
-    showSequenceTrack(position, sequenceLength, id, validLinks);
   });
-
 }
+
+
 function showSequenceTrack(position, length, proteinId, validLinks) {
   const container = document.getElementById('sequence-overlay');
   container.innerHTML = '';
 
-  const scaleWidth = 400;
-  const pxPerAA = scaleWidth / length;
+  const pxPerAA = 0.5; // 0.5 pixels par AA
+  const scaleWidth = length * pxPerAA;
+  const friseLeft = position.x - scaleWidth / 2;
 
-  const line = document.createElement('div');
-  line.style.position = 'absolute';
-  line.style.left = `${position.x - scaleWidth/2}px`;
-  line.style.top = `${position.y + 30}px`;
-  line.style.width = `${scaleWidth}px`;
-  line.style.height = '2px';
-  /*line.style.background = 'black';*/
-  line.style.background = 'red';  // Rouge vif pour test
+  // Label à gauche de la frise
+  const label = document.createElement('div');
+  label.innerText = proteinId;
+  label.style.position = 'absolute';
 
-  container.appendChild(line);
+  const baseLeft = friseLeft - 60;  // ta position de base
+  const charWidth = 9;              // largeur estimée d’un caractère en px
+  const maxCharsWithoutShift = 6;   // seuil
 
-  // Graduation tous les 100 AA
-  for (let i = 0; i <= length; i += 100) {
-    const mark = document.createElement('div');
-    mark.style.position = 'absolute';
-    mark.style.left = `${position.x - scaleWidth/2 + i * pxPerAA}px`;
-    mark.style.top = `${position.y + 35}px`;
-    mark.innerText = i;
-    mark.style.fontSize = '10px';
-    container.appendChild(mark);
+  let shift = 0;
+  if (proteinId.length > maxCharsWithoutShift) {
+    shift = (proteinId.length - maxCharsWithoutShift) * charWidth;
   }
 
-  // Dernière position
+  label.style.left = `${baseLeft - shift}px`;  label.style.top = `${position.y - 6}px`; // Centré verticalement avec la frise
+  label.style.fontWeight = 'bold';
+  label.style.fontSize = '14px';
+  label.style.color = '#ffffff';
+  label.style.textAlign = 'right';
+  label.style.width = '50px'; // pour aligner proprement
+  container.appendChild(label);
+
+  // Bande de la frise
+  const track = document.createElement('div');
+  track.style.position = 'absolute';
+  track.style.left = `${friseLeft}px`;
+  track.style.top = `${position.y - 6}px`;
+  track.style.width = `${scaleWidth}px`;
+  track.style.height = '20px';
+  track.style.background = 'transparent';
+  track.style.border = '1px solid #aaa';
+  //track.style.borderRadius = '6px'; ask to caitie her preference
+  container.appendChild(track);
+
+  // Position 1 (au tout début) — sans trait, juste texte
+  const tickLabel1 = document.createElement('div');
+  tickLabel1.style.position = 'absolute';
+  tickLabel1.style.left = `${friseLeft - 8}px`;
+  tickLabel1.style.top = `${position.y + 15}px`;
+  tickLabel1.style.fontSize = '10px';
+  tickLabel1.style.color = '#ffffff';
+  tickLabel1.innerText = '1';
+  container.appendChild(tickLabel1);
+
+  // Graduation tous les 100 AA, en commençant à 100
+  for (let i = 100; i <= length; i += 100) {
+    const tick = document.createElement('div');
+    tick.style.position = 'absolute';
+    tick.style.left = `${friseLeft + i * pxPerAA}px`;
+    tick.style.top = `${position.y + 10}px`;
+    tick.style.width = '1px';
+    tick.style.height = '5px';
+    tick.style.background = '#ffffff';
+    container.appendChild(tick);
+
+    const tickLabel = document.createElement('div');
+    tickLabel.style.position = 'absolute';
+    tickLabel.style.left = `${friseLeft + i * pxPerAA - 10}px`;
+    tickLabel.style.top = `${position.y + 15}px`;
+    tickLabel.style.fontSize = '10px';
+    tickLabel.style.color = '#ffffff';
+    tickLabel.innerText = i;
+    container.appendChild(tickLabel);
+  }
+
+  // Dernière position (valeur exacte)
   const finalMark = document.createElement('div');
   finalMark.style.position = 'absolute';
-  finalMark.style.left = `${position.x - scaleWidth/2 + length * pxPerAA}px`;
-  finalMark.style.top = `${position.y + 35}px`;
+  finalMark.style.left = `${friseLeft + length * pxPerAA - 10}px`;
+  finalMark.style.top = `${position.y + 15}px`;
   finalMark.innerText = length;
   finalMark.style.fontSize = '10px';
+  finalMark.style.color = '#ffffff';
   container.appendChild(finalMark);
 
-  // Afficher les crosslinks
-  drawCrosslinks(proteinId, position, pxPerAA, validLinks);
+  // Dessine les liens
+  drawCrosslinks(proteinId, position, pxPerAA, validLinks, length);
 }
 
 
-function drawCrosslinks(proteinId, position, pxPerAA, validLinks) {
+function drawCrosslinks(proteinId, position, pxPerAA, validLinks, length) {
   const container = document.getElementById('sequence-overlay');
+
+  // Supprimer ancien SVG
+  let svg = document.getElementById('overlay-svg');
+  if (svg) svg.remove();
+
+  // Nouveau SVG
+  svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('id', 'overlay-svg');
+  svg.style.position = 'absolute';
+  svg.style.left = '0';
+  svg.style.top = '0';
+  svg.style.width = '100%';
+  svg.style.height = '100%';
+  svg.style.pointerEvents = 'none';
+  container.appendChild(svg);
+
+  const startX = position.x - (length * pxPerAA) / 2;
 
   validLinks.forEach(link => {
     const p1 = link.Protein1.toUpperCase().trim();
@@ -357,39 +451,59 @@ function drawCrosslinks(proteinId, position, pxPerAA, validLinks) {
     const pos1 = parseInt(link.AbsPos1);
     const pos2 = parseInt(link.AbsPos2);
 
+    // Intra-protéine
     if (p1 === proteinId && p2 === proteinId) {
-      // Intra-protéine : arc entre pos1 et pos2
-      const arc = document.createElement('div');
-      const startX = position.x - 200 + pos1 * pxPerAA;
-      const endX = position.x - 200 + pos2 * pxPerAA;
-      const width = Math.abs(endX - startX);
+      const x1 = startX + pos1 * pxPerAA;
+      const x2 = startX + pos2 * pxPerAA;
+      const midX = (x1 + x2) / 2;
+      const topY = position.y;
+      const arcHeight = Math.max(10, Math.abs(x2 - x1) * 0.2);
 
-      arc.style.position = 'absolute';
-      arc.style.left = `${Math.min(startX, endX)}px`;
-      arc.style.top = `${position.y + 10}px`;
-      arc.style.width = `${width}px`;
-      arc.style.height = '20px';
-      arc.style.borderTop = '2px solid purple';
-      arc.style.borderRadius = `${width/2}px / 10px`;
-      container.appendChild(arc);
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M ${x1} ${topY} Q ${midX} ${topY - arcHeight}, ${x2} ${topY}`);
+      path.setAttribute('stroke', 'purple');
+      path.setAttribute('stroke-width', '2');
+      path.setAttribute('fill', 'none');
+      svg.appendChild(path);
     }
 
+    // Inter-protéine (p1 est la frise)
     if (p1 === proteinId && p2 !== proteinId) {
-
       const targetNode = cy.nodes().filter(n => n.data('id').toUpperCase() === p2);
       if (targetNode.length) {
         const targetPos = targetNode[0].renderedPosition();
-        const x1 = position.x - 200 + pos1 * pxPerAA;
-        const y1 = position.y + 30;
+        const x1 = startX + pos1 * pxPerAA;
+        const y1 = position.y;
 
-        const line = document.createElement('div');
-        line.style.position = 'absolute';
-        line.style.left = `${Math.min(x1, targetPos.x)}px`;
-        line.style.top = `${Math.min(y1, targetPos.y)}px`;
-        line.style.width = `${Math.abs(targetPos.x - x1)}px`;
-        line.style.height = `${Math.abs(targetPos.y - y1)}px`;
-        line.style.border = '1px dashed green';
-        container.appendChild(line);
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', x1);
+        line.setAttribute('y1', y1);
+        line.setAttribute('x2', targetPos.x);
+        line.setAttribute('y2', targetPos.y);
+        line.setAttribute('stroke', 'green');
+        line.setAttribute('stroke-width', '1');
+        line.setAttribute('stroke-dasharray', '4,2');
+        svg.appendChild(line);
+      }
+    }
+
+    // Inter-protéine (p2 est la frise)
+    if (p2 === proteinId && p1 !== proteinId) {
+      const targetNode = cy.nodes().filter(n => n.data('id').toUpperCase() === p1);
+      if (targetNode.length) {
+        const targetPos = targetNode[0].renderedPosition();
+        const x1 = startX + pos2 * pxPerAA;
+        const y1 = position.y;
+
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', x1);
+        line.setAttribute('y1', y1);
+        line.setAttribute('x2', targetPos.x);
+        line.setAttribute('y2', targetPos.y);
+        line.setAttribute('stroke', 'green');
+        line.setAttribute('stroke-width', '1');
+        line.setAttribute('stroke-dasharray', '4,2');
+        svg.appendChild(line);
       }
     }
   });
@@ -409,20 +523,68 @@ onBeforeUnmount(() => {
   if(cy) cy.destroy();
   window.removeEventListener('resize', handleResize);
 });
+
+document.addEventListener('DOMContentLoaded', () => {
+  const overlay = document.getElementById('sequence-overlay');
+  if (!overlay) {
+    console.warn('⚠️ L’élément #sequence-overlay est introuvable dans le DOM.');
+    return;
+  }
+  console.log('✅ Listener attaché à #sequence-overlay');
+  overlay.addEventListener('click', (evt) => {
+    console.log('clic sur frise');
+    overlay.style.transition = 'opacity 0.5s ease';
+    overlay.style.opacity = 0;
+
+    setTimeout(() => {
+      overlay.style.display = 'none';
+      overlay.innerHTML = '';
+
+      cy.nodes().style('display', 'element');
+      cy.edges().style('display', 'element');
+
+      cy.nodes().animate({
+        style: { width: '40px', height: '40px', opacity: 1 }
+      }, { duration: 500 });
+
+      cy.edges().animate({
+        style: { opacity: 1 }
+      }, { duration: 500 });
+
+      crosslinkCount.value = 0;
+      uniqueCrosslinkCount.value = 0;
+      crosslinkIntraCount.value = 0;
+      crosslinkInterCount.value = 0;
+    }, 500);
+  });
+});
+
 </script>
 
 <style scoped >
+
 .graph-page {
   display: flex;
-  height: calc(100vh - 50px);
-  margin-right: 300px;
+  /*height: calc(100vh - 50px);*/
+  margin: 0;
+  width: 100%;
+  overflow: visible;
+  box-sizing: border-box;
+  height: 700px;
 }
+
+
 .protein-info-container {
-  width: 300px;
-  min-width: 300px;
-  max-width: 300px;
-  overflow-y: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+
+  width: 367px;
+  overflow: auto;
   padding: 10px;
+  margin-top: 40px;
+  height: 600px;
+  box-sizing: border-box;
 }
 
 .graph-container {
@@ -430,17 +592,21 @@ onBeforeUnmount(() => {
   width: 1000px;
   height: 600px;
   position: relative;
-  overflow: visible; /* éviter débordements */
+  overflow: visible;
 }
+
 
 .cytoscape {
   flex: 1;
   width: 100%;
-  height: 100%; /* prendre toute la hauteur */
+  height: 100%;
+  max-width: 100%;
   border: 3px solid #ccc;
   position: relative;
+
   transform-style: preserve-3d;
 }
+
 .cytoscape-graph canvas {
   left: 0 !important;
 }
@@ -459,6 +625,8 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   pointer-events: none;
+  z-index: 100000000000000000000000000;
+  cursor: pointer;
 }
 
 .total-crosslinks {
@@ -466,5 +634,10 @@ onBeforeUnmount(() => {
   font-weight: bold;
   font-size: 1.1em;
   color: #333;
+}
+
+#sequence-overlay {
+  opacity: 0;
+  transition: opacity 0.5s ease;
 }
 </style>
