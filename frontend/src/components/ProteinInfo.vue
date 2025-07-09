@@ -56,7 +56,11 @@ defineProps({
   padding: 1rem;
   width: 300px;
   overflow: auto;
-  margin-top: 30px;
+  align-self: flex-start;
+}
+h3 {
+  margin-top: 0;
+
 }
 
 .protein-info ul {
