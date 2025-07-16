@@ -1,4 +1,10 @@
 <template>
+  <input
+      v-model="searchQuery"
+      type="text"
+      placeholder="Rechercher une protéine..."
+      class="search-input"
+  />
   <div class="graph-page">
     <div class="protein-info-container">
       <ProteinInfo v-if="selectedProtein"
@@ -53,6 +59,11 @@ const crosslinkInterCount = ref(0);
 const totalCrosslinkCount = ref(0);
 const uniqueCrosslinkCount = ref(0);
 
+const searchQuery = ref('');
+const filteredProteinIds = ref([]);
+
+//const filteredProteinIds = ref(new Set());
+
 const handleResize = () => {
   if (cy) {
     cy.resize();
@@ -74,11 +85,11 @@ const forceCanvasAlignment = () => {
 
 
 const generateGraph = async () => {
-
   if (cy) {
     cy.destroy();
     cy = null;
   }
+
   const fastaData = store.fastaData;
   const csvData = store.csvData;
 
@@ -86,9 +97,10 @@ const generateGraph = async () => {
     console.warn('No data loaded for graph');
     return;
   }
+
   const edgeMap = new Map();
   const involvedProteinIds = new Set();
-  // Map FASTA par id en majuscule pour vérif rapide
+
   const fastaMap = new Map(fastaData.map(p => [p.uniprot_id.toUpperCase(), p]));
 
   const validLinks = csvData.filter(link => {
@@ -96,6 +108,7 @@ const generateGraph = async () => {
     const target = (link.Protein2 || '').trim().toUpperCase();
     return source && target && fastaMap.has(source) && fastaMap.has(target);
   });
+
   totalCrosslinkCount.value = validLinks.length;
 
   validLinks.forEach(link => {
@@ -141,18 +154,30 @@ const generateGraph = async () => {
 
   // Créer nœuds avec taille normalisée
   const nodes = Array.from(involvedProteinIds)
-      .filter(id => fastaMap.has(id))
+      .filter(id => {
+        if (!fastaMap.has(id)) return false;
+
+        // ✅ Si on a un filtre actif, on limite les nœuds affichés
+        if (filteredProteinIds.value.length > 0) {
+          return filteredProteinIds.value.includes(id);
+        }
+
+        return true;
+      })
       .map(id => {
         const degree = degreeMap.get(id) || 0;
         const size = normalizeSize(degree);
+        const fastaEntry = fastaMap.get(id);
+        const label = fastaEntry?.gene_name || id;
         return {
           data: {
             id,
-            label: id,
+            label,
             size
           }
         };
       });
+
 
 
   // Normaliser largeur des arêtes
@@ -166,17 +191,24 @@ const generateGraph = async () => {
     return minWidth + ((count - minCount) / (maxCount - minCount)) * (maxWidth - minWidth);
   };
 
+  const edges = Array.from(edgeMap.values())
+      .filter(({ source, target }) => {
+        if (filteredProteinIds.value.length === 0) return true;
+        return (
+            filteredProteinIds.value.includes(source) &&
+            filteredProteinIds.value.includes(target)
+        );
+      })
+      .map((edgeData, i) => ({
+        data: {
+          id: `link-${i}`,
+          source: edgeData.source,
+          target: edgeData.target,
+          label: '',
+          width: normalizeWidth(edgeData.count)
+        }
+      }));
 
-  // Créer arêtes avec largeur normalisée, sans label
-  const edges = Array.from(edgeMap.values()).map((edgeData, i) => ({
-    data: {
-      id: `link-${i}`,
-      source: edgeData.source,
-      target: edgeData.target,
-      label: '',
-      width: normalizeWidth(edgeData.count) /*2 + (edgeData.count - 1) * 2*/
-    }
-  }));
 
   await nextTick();
 
@@ -242,11 +274,8 @@ const generateGraph = async () => {
       const offsetY = cy.height() / 2;
 
       cy.pan({ x: offsetX, y: offsetY });
-
     }, 100);
   });
-
-
 
   cy.on('tap', 'node', evt => {
     evt.preventDefault?.();
@@ -329,7 +358,7 @@ const generateGraph = async () => {
         const container = document.getElementById('sequence-overlay');
         container.style.opacity = 0;
         container.style.transition = 'opacity 0.5s ease';
-        void container.offsetWidth; // force reflow pour activer transition
+        void container.offsetWidth;
         container.style.opacity = 1;
       }
     });
@@ -508,61 +537,86 @@ function drawCrosslinks(proteinId, position, pxPerAA, validLinks, length) {
     }
   });
 }
+function filterGraph(query) {
+  if (!cy || !query) {
+    // Si vide, on montre tout
+    filteredProteinIds.value = []; // ← afficher tout
+    cy.nodes().style('display', 'element');
+    cy.edges().style('display', 'element');
+    return;
+  }
+
+  const fastaMap = new Map(store.fastaData.map(p => [p.uniprot_id.toUpperCase(), p]));
+
+  const matchedProteins = store.fastaData.filter(p => {
+    const fields = [
+      p.uniprot_id,
+      p.protein_name,
+      p.gene_name,
+      p.organism,
+      p.organism_id
+    ];
+    return fields.some(field =>
+        typeof field === 'string' && field.toLowerCase().includes(query)
+    );
+  });
+
+  const matchedIds = new Set(matchedProteins.map(p => p.uniprot_id.toUpperCase()));
+
+  const linkedIds = new Set();
+  store.csvData.forEach(link => {
+    const p1 = (link.Protein1 || '').trim().toUpperCase();
+    const p2 = (link.Protein2 || '').trim().toUpperCase();
+    if (matchedIds.has(p1)) linkedIds.add(p2);
+    if (matchedIds.has(p2)) linkedIds.add(p1);
+  });
+
+  const finalVisibleIds = new Set([...matchedIds, ...linkedIds]);
+
+  // ✅ MAJ du tableau réactif ici :
+  filteredProteinIds.value = Array.from(finalVisibleIds);
+
+  cy.nodes().forEach(node => {
+    const id = node.id().toUpperCase();
+    node.style('display', finalVisibleIds.has(id) ? 'element' : 'none');
+  });
+
+  cy.edges().forEach(edge => {
+    const source = edge.data('source').toUpperCase();
+    const target = edge.data('target').toUpperCase();
+    const visible = finalVisibleIds.has(source) && finalVisibleIds.has(target);
+    edge.style('display', visible ? 'element' : 'none');
+  });
+}
+
+
 
 
 onMounted(async () => {
-  generateGraph();
+  await generateGraph();
   window.addEventListener('resize', handleResize);
 });
+
+watch(searchQuery, (newQuery) => {
+  console.log(newQuery);
+  filterGraph(newQuery.trim().toLowerCase());
+});
+
 
 watch(() => props.refreshTrigger, () => {
   generateGraph()
 })
+
 
 onBeforeUnmount(() => {
   if(cy) cy.destroy();
   window.removeEventListener('resize', handleResize);
 });
 
-document.addEventListener('DOMContentLoaded', () => {
-  const overlay = document.getElementById('sequence-overlay');
-  if (!overlay) {
-    console.warn('⚠️ L’élément #sequence-overlay est introuvable dans le DOM.');
-    return;
-  }
-  console.log('✅ Listener attaché à #sequence-overlay');
-  overlay.addEventListener('click', (evt) => {
-    console.log('clic sur frise');
-    overlay.style.transition = 'opacity 0.5s ease';
-    overlay.style.opacity = 0;
-
-    setTimeout(() => {
-      overlay.style.display = 'none';
-      overlay.innerHTML = '';
-
-      cy.nodes().style('display', 'element');
-      cy.edges().style('display', 'element');
-
-      cy.nodes().animate({
-        style: { width: '40px', height: '40px', opacity: 1 }
-      }, { duration: 500 });
-
-      cy.edges().animate({
-        style: { opacity: 1 }
-      }, { duration: 500 });
-
-      crosslinkCount.value = 0;
-      uniqueCrosslinkCount.value = 0;
-      crosslinkIntraCount.value = 0;
-      crosslinkInterCount.value = 0;
-    }, 500);
-  });
-});
 
 </script>
 
 <style scoped >
-
 .graph-page {
   display: flex;
   /*height: calc(100vh - 50px);*/
@@ -573,12 +627,10 @@ document.addEventListener('DOMContentLoaded', () => {
   height: 700px;
 }
 
-
 .protein-info-container {
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
-
   width: 367px;
   overflow: auto;
   padding: 10px;
@@ -595,7 +647,6 @@ document.addEventListener('DOMContentLoaded', () => {
   overflow: visible;
 }
 
-
 .cytoscape {
   flex: 1;
   width: 100%;
@@ -603,7 +654,6 @@ document.addEventListener('DOMContentLoaded', () => {
   max-width: 100%;
   border: 3px solid #ccc;
   position: relative;
-
   transform-style: preserve-3d;
 }
 
@@ -616,7 +666,6 @@ document.addEventListener('DOMContentLoaded', () => {
   width: 100%;
   height: 100%;
 }
-
 
 #sequence-overlay {
   position: absolute;
@@ -639,5 +688,29 @@ document.addEventListener('DOMContentLoaded', () => {
 #sequence-overlay {
   opacity: 0;
   transition: opacity 0.5s ease;
+}
+
+
+
+.search-input {
+  width: 100%;
+  max-width: 200px; /* Limite la largeur de la barre de recherche */
+  padding: 10px 20px; /* Espacement interne pour rendre le texte plus lisible */
+  font-size: 16px; /* Taille du texte */
+  border: 2px solid #ccc; /* Bordure grise */
+  border-radius: 30px; /* Coins arrondis */
+  background-color: #424242; /* Couleur de fond claire */
+  transition: border-color 0.3s ease, box-shadow 0.3s ease; /* Effet de transition pour les changements */
+  outline: none; /* Enlève l'effet de contour par défaut */
+}
+
+.search-input:focus {
+  border-color: #4CAF50; /* Bordure verte quand l'input est sélectionné */
+  box-shadow: 0 0 8px rgba(76, 175, 80, 0.4); /* Ombre autour de l'input */
+}
+
+.search-input::placeholder {
+  color: #aaa; /* Couleur du texte de placeholder */
+  font-style: italic; /* Style en italique */
 }
 </style>
