@@ -2,6 +2,8 @@
   "dependencies": {
     "cytoscape": "^3.32.0",
     "cytoscape-cose-bilkent": "^4.1.0",
+    "primeicons": "^7.0.0",
+    "primevue": "^4.3.6",
     "vue-router": "^4.5.1"
   },
   "devDependencies": {
