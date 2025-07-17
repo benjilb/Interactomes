@@ -2,7 +2,7 @@
   <input
       v-model="searchQuery"
       type="text"
-      placeholder="Rechercher une protéine..."
+      placeholder="search for a gene name, protein name, uniprot ID, sequence..."
       class="search-input"
   />
   <div class="graph-page">
@@ -27,18 +27,24 @@
         <p>Total crosslinks : {{ totalCrosslinkCount }}</p>
       </div>
     </div>
-
+    <div class="crosslink-table-container">
+      <CrosslinkTable
+          v-if="selectedProtein && selectedProteinCrosslinks.length"
+          :crosslinks="selectedProteinCrosslinks"
+          :selectedProtein="selectedProtein"
+      />
+    </div>
   </div>
 
 </template>
 
 <script setup>
-
 import {ref,onMounted, watch, onBeforeUnmount, nextTick} from 'vue'
 import { useDataStore } from '@/store/dataStore'
 import ProteinInfo from '@/components/ProteinInfo.vue'
 import cytoscape from 'cytoscape';
 import coseBilkent from 'cytoscape-cose-bilkent';
+import CrosslinkTable from '@/components/CrosslinkTable.vue';
 
 cytoscape.use(coseBilkent);
 
@@ -53,6 +59,7 @@ const cyContainer = ref(null);
 let cy = null;
 const store = useDataStore();
 const selectedProtein = ref(null)
+const selectedProteinCrosslinks = ref([]);
 const crosslinkCount = ref(0);
 const crosslinkIntraCount = ref(0);
 const crosslinkInterCount = ref(0);
@@ -300,6 +307,15 @@ const generateGraph = async () => {
       console.warn(`Séquence introuvable pour ${id}`);
       return;
     }
+    selectedProtein.value = fastaMap.get(id) || null;
+
+// 🎯 Filtrer les crosslinks liés à cette protéine :
+    selectedProteinCrosslinks.value = validLinks.filter(link => {
+      const p1 = (link.Protein1 || '').trim().toUpperCase();
+      const p2 = (link.Protein2 || '').trim().toUpperCase();
+      return p1 === id || p2 === id;
+    });
+
 
     // Animation disparition du noeud (taille + opacité)
     node.animate({
@@ -554,7 +570,8 @@ function filterGraph(query) {
       p.protein_name,
       p.gene_name,
       p.organism,
-      p.organism_id
+      p.organism_id,
+      p.sequence
     ];
     return fields.some(field =>
         typeof field === 'string' && field.toLowerCase().includes(query)
@@ -690,11 +707,9 @@ onBeforeUnmount(() => {
   transition: opacity 0.5s ease;
 }
 
-
-
 .search-input {
   width: 100%;
-  max-width: 200px; /* Limite la largeur de la barre de recherche */
+  max-width: 500px; /* Limite la largeur de la barre de recherche */
   padding: 10px 20px; /* Espacement interne pour rendre le texte plus lisible */
   font-size: 16px; /* Taille du texte */
   border: 2px solid #ccc; /* Bordure grise */
@@ -713,4 +728,9 @@ onBeforeUnmount(() => {
   color: #aaa; /* Couleur du texte de placeholder */
   font-style: italic; /* Style en italique */
 }
+
+.crosslink-table-container {
+  max-height: 200vh; /* Plus grand que 50vh par défaut */
+}
+
 </style>
