@@ -10,10 +10,11 @@
       <li><strong>Sequence:</strong>
         <pre class="sequence" v-html="styledSequence"></pre>
       </li>
-      <li><strong>Number of unique crosslinks: </strong> {{ uniqueCount }}</li>
-      <li class="crosslink-sub">- Intra-protein Crosslinks: {{ intraCount }}</li>
-      <li class="crosslink-sub">- Inter-protein Crosslinks: {{ interCount }}</li>
-      <li><strong>Number of Crosslinks with copy:</strong> {{ crosslinkCount }}</li>
+      <li><strong>Number of unique crosslinks: </strong> {{ crosslinkStats.uniqueCount }}</li>
+      <li class="crosslink-sub">- Intra-protein Crosslinks: {{ crosslinkStats.intraCount }}</li>
+      <li class="crosslink-sub">- Inter-protein Crosslinks: {{ crosslinkStats.interCount }}</li>
+      <li><strong>Number of Crosslinks with copy:</strong> {{ crosslinkStats.crosslinkCount }}</li>
+
     </ul>
   </div>
 
@@ -31,23 +32,8 @@ const { protein } = defineProps({
   protein: {
     type: Object,
     default: null
-  },
-  crosslinkCount: {
-    type: Number,
-    default: 0
-  },
-  intraCount: {
-    type: Number,
-    default: 0
-  },
-  interCount: {
-    type: Number,
-    default: 0
-  },
-  uniqueCount: {
-    type: Number,
-    default: 0
   }
+
 })
 
 const crosslinkMap = computed(() => {
@@ -97,6 +83,61 @@ const crosslinkMap = computed(() => {
   return map
 })
 
+const crosslinkStats = computed(() => {
+  const stats = {
+    crosslinkCount: 0,
+    uniqueCount: 0,
+    intraCount: 0,
+    interCount: 0
+  };
+
+  if (!protein?.uniprot_id || !store.csvData || !store.fastaData) return stats;
+
+  const id = protein.uniprot_id.toUpperCase();
+  const fastaMap = new Map(store.fastaData.map(p => [p.uniprot_id.toUpperCase(), true]));
+
+  const uniqueSet = new Set();
+
+  store.csvData.forEach(link => {
+    const p1 = (link.Protein1 || '').trim().toUpperCase();
+    const p2 = (link.Protein2 || '').trim().toUpperCase();
+    const pos1 = parseInt(link.AbsPos1);
+    const pos2 = parseInt(link.AbsPos2);
+
+    // 🔎 Vérifie que les deux protéines existent dans le fasta
+    if (!fastaMap.has(p1) || !fastaMap.has(p2)) return;
+    // 🔎 Vérifie que les positions sont valides
+    if (isNaN(pos1) || isNaN(pos2)) return;
+    // 🔎 Ne concerne pas la protéine sélectionnée
+    if (p1 !== id && p2 !== id) return;
+
+    stats.crosslinkCount++; // total pour la protéine
+
+    const [protA, protB] = p1 < p2 ? [p1, p2] : [p2, p1];
+    const [absA, absB] = pos1 < pos2 ? [pos1, pos2] : [pos2, pos1];
+    const key = `${protA}|${protB}|${absA}|${absB}`;
+
+    if (!uniqueSet.has(key)) {
+      uniqueSet.add(key);
+
+      const isSameProtein = protA === protB && protA === id;
+      const isInterProtein = (protA === id || protB === id) && protA !== protB;
+
+      // 💡 On compte inter uniquement si positions ≠
+      if (isSameProtein) {
+        stats.intraCount++;
+      } else if (isInterProtein && absA !== absB) {
+        stats.interCount++;
+      }
+    }
+  });
+
+  stats.uniqueCount = uniqueSet.size;
+  return stats;
+});
+
+
+
 const styledSequence = computed(() => {
   if (!protein?.sequence) {
     console.log("Pas de séquence protéique")
@@ -130,7 +171,7 @@ const styledSequence = computed(() => {
 <style scoped>
 .protein-info {
   padding: 1rem;
-  width: 300px;
+  width: 100%;
   overflow: auto;
   align-self: flex-start;
 }
