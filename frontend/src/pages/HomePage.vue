@@ -1,12 +1,13 @@
 <template>
   <div class="home">
-    <h1>Welcome to Interactomes !</h1>
+    <Header />
     <UploadPanel />
   </div>
 </template>
 
 <script setup>
 import UploadPanel from '@/components/UploadPanel.vue'
+import Header from "@/components/Header.vue";
 </script>
 
 <style scoped>
