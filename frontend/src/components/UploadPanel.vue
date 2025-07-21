@@ -90,15 +90,19 @@ const generateGraphTest = async () => {
 </script>
 
 <style scoped>
+
 .upload-panel {
+
+  padding-top: 0px; /* Enlève l'espace intérieur en haut */
+  padding-bottom: 30px;
+  padding-left: 30px;
+  padding-right: 30px;
   position: relative;
   background: linear-gradient(135deg, #59595c, #1d3467);
   border: 2px solid #59595c;
   border-radius: 14px;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  padding: 30px;
-  max-width: 500px;
-  margin: 20px auto;
+  max-width: 700px;
   text-align: center;
   margin-top: 0;
 }
@@ -111,11 +115,14 @@ const generateGraphTest = async () => {
   opacity: 0.1;
   pointer-events: none;
   border-radius: 12px;
+  margin: 0;
+  margin-top: 5px;
 }
 
 h2 {
-  margin-top: 0;
-  margin-bottom: 20px;
+  font-size: 1.2rem; /* ou une autre taille plus petite */
+  margin-top: 10px;  /* réduit l'espace avec le haut */
+  margin-bottom: 10px; /* réduit l'espace en dessous aussi */
 }
 
 .upload-section {

@@ -38,11 +38,12 @@ const proteinLabel = computed(() =>
 <style scoped>
 
 .crosslink-table {
-  width: 400px;
+  width: 100%;
   padding: 1rem;
   background: #242424;
   height: 800px;
 }
+
 .crosslink-table ::v-deep(.p-datatable-thead> tr > th) {
   background-color: #242424 !important;
   color: white;
