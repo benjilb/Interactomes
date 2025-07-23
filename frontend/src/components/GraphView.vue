@@ -284,14 +284,16 @@ const generateGraph = async () => {
         selector: 'node[type="frise"]',
         style: {
           shape: 'rectangle',
-          width: 'data(sequenceLength)', // ou transforme en pixels selon une échelle
-          height: 20,
-          'background-color': '#222',
+          width: 'data(sequenceLength)',
+          height: 50,
+          'background-color': '#000',
+          'background-opacity': 0.15,
           'border-color': '#aaa',
           'border-width': 1,
-          label: 'data(proteinId)',
+          label: 'data(label)',
           'text-valign': 'center',
-          'text-halign': 'center',
+          'text-halign': 'left',
+          'text-margin-x': -10,
           color: '#fff',
           'font-size': 10
         }
@@ -477,13 +479,13 @@ const generateGraph = async () => {
     const pxPerAA = 0.5;
     const friseWidth = sequenceLength * pxPerAA;
     const friseNodeId = `frise-${id}`;
-
+    const label = fasta?.gene_name;
     // Ajouter le nœud frise
     cy.add({
       group: 'nodes',
       data: {
         id: friseNodeId,
-        label: `Seq. ${id}`,
+        label,
         type: 'frise',
         proteinId: id,
         sequenceLength: friseWidth
