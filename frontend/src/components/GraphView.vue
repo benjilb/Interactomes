@@ -385,16 +385,6 @@ const generateGraph = async () => {
       return;
     }
 
-    if (selectedProtein.value && selectedProtein.value.uniprot_id.toUpperCase() === id) {
-      // Si on reclique, on ferme la frise
-      cy.remove('#frise-node');
-      cy.remove('edge[type="inter"]');
-      cy.remove('edge[type="intra"]');
-      selectedProtein.value = null;
-      selectedProteinCrosslinks.value = [];
-      return;
-    }
-
     const fasta = store.fastaData.find(p => p.uniprot_id.toUpperCase() === id);
     if (!fasta || !fasta.sequence) {
       console.warn(`Séquence introuvable pour ${id}`);
@@ -447,15 +437,7 @@ const generateGraph = async () => {
     });
 
 
-    // Supprimer ancienne frise et edges associés
-    cy.remove('#frise-node');
-    cy.remove('edge[type="inter"]');
-    cy.remove('edge[type="intra"]');
 
-    const position = node.position();
-    const sequenceLength = fasta.sequence.length;
-    const pxPerAA = 0.5;
-    const friseWidth = sequenceLength * pxPerAA;
     // Si une frise est déjà affichée, restaurer son nœud d'origine
     // ✅ Place this entire block in your cy.on('tap', 'node', evt => { ... })
 //     BEFORE removing the clicked node and adding the new frise
@@ -463,7 +445,6 @@ const generateGraph = async () => {
     if (lastFriseNodeId && lastFriseForProtein && lastFriseForProtein !== id) {
       const oldFasta = store.fastaData.find(p => p.uniprot_id.toUpperCase() === lastFriseForProtein);
       const oldFriseNode = cy.getElementById(lastFriseNodeId);
-      console.log("clic sur different nodes")
       if (oldFasta && oldFriseNode.nonempty()) {
         const pos = oldFriseNode.position();
 
@@ -477,11 +458,7 @@ const generateGraph = async () => {
 
         cy.add({
           group: 'nodes',
-          data: {
-            id: lastFriseForProtein,
-            label,
-            size
-          },
+          data: { id: lastFriseForProtein, label, size },
           position: pos
         });
 
@@ -493,6 +470,12 @@ const generateGraph = async () => {
     }
 
     cy.remove(`node[id="${id}"]`);
+
+
+    const position = node.position();
+    const sequenceLength = fasta.sequence.length;
+    const pxPerAA = 0.5;
+    const friseWidth = sequenceLength * pxPerAA;
     const friseNodeId = `frise-${id}`;
 
     // Ajouter le nœud frise
@@ -539,9 +522,11 @@ const generateGraph = async () => {
         });
       }
 
-      if (p1 === id && p2 !== id) {
-        const target = p2;
+      if ((p1 === id && p2 !== id) || (p2 === id && p1 !== id)) {
+        const target = p1 === id ? p2 : p1;
+        const pos = p1 === id ? pos1 : pos2;
         const targetNode = cy.nodes().filter(n => n.data('id').toUpperCase() === target);
+
         if (targetNode.length) {
           cy.add({
             group: 'edges',
@@ -550,34 +535,15 @@ const generateGraph = async () => {
               source: friseNodeId,
               target: targetNode.id(),
               type: 'inter',
-              abs: pos1,
-              label: `p${pos1}`
+              abs: pos,
+              label: `p${pos}`
             },
             classes: 'crosslink'
           });
         }
       }
 
-      if (p2 === id && p1 !== id) {
-        const target = p1;
-        const targetNode = cy.nodes().filter(n => n.data('id').toUpperCase() === target);
-        if (targetNode.length) {
-          cy.add({
-            group: 'edges',
-            data: {
-              id: `inter-${i}`,
-              source: friseNodeId,
-              target: targetNode.id(),
-              type: 'inter',
-              abs: pos2,
-              label: `p${pos2}`
 
-            },
-            classes: 'crosslink'
-
-          });
-        }
-      }
     });
   });
 
