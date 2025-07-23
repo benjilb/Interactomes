@@ -62,6 +62,15 @@ const totalCrosslinkCount = ref(0);
 const searchQuery = ref('');
 const filteredProteinIds = ref([]);
 
+const fastaMap = new Map();
+const edgeMap = new Map();
+const degreeMap = new Map();
+let minDegree = 0, maxDegree = 1;
+
+let lastFriseNodeId = null;
+let lastFriseForProtein = null;
+
+
 // ===== Utils =====
 const normalizeWidth = (count, min, max) => {
   const minWidth = 2, maxWidth = 8;
@@ -86,25 +95,41 @@ const forceCanvasAlignment = () => {
   });
 };
 
-// ===== Graph =====
-const generateGraph = async () => {
-  if (cy) {
-    cy.destroy();
-    cy = null;
-  }
+function recreateGlobalEdges() {
+  const edgeCounts = Array.from(edgeMap.values()).map(e => e.count);
+  const [minCount, maxCount] = [Math.min(...edgeCounts), Math.max(...edgeCounts)];
+
+  const edges = Array.from(edgeMap.values()).map((edgeData, i) => ({
+    group: 'edges',
+    data: {
+      id: `link-${i}`,
+      source: edgeData.source,
+      target: edgeData.target,
+      label: '',
+      width: normalizeWidth(edgeData.count, minCount, maxCount)
+    }
+  }));
+
+  cy.add(edges);
+}
+
+
+function buildGraphData() {
+  fastaMap.clear();
+  edgeMap.clear();
+  degreeMap.clear();
 
   const fastaData = store.fastaData;
   const csvData = store.csvData;
 
   if (!fastaData.length || !csvData.length) {
-    console.warn('No data loaded for graph');
-    return;
+    console.warn('No data loaded');
+    return { nodes: [], edges: [] };
   }
 
-  const fastaMap = new Map(fastaData.map(p => [p.uniprot_id.toUpperCase(), p]));
-  const edgeMap = new Map();
-  const involvedProteinIds = new Set();
+  fastaData.forEach(p => fastaMap.set(p.uniprot_id.toUpperCase(), p));
 
+  const involvedProteinIds = new Set();
 
   const validLinks = csvData.filter(link => {
     const source = (link.Protein1 || '').trim().toUpperCase();
@@ -114,48 +139,35 @@ const generateGraph = async () => {
 
   totalCrosslinkCount.value = validLinks.length;
 
-//Parcours des crosslinks valides pour : enregistrer les protéines impliquées (nœuds du graphe) construire une table d'arêtes unique (edgeMap) en regroupant les interactions symétriques
   validLinks.forEach(link => {
     const source = (link.Protein1 || '').trim().toUpperCase();
     const target = (link.Protein2 || '').trim().toUpperCase();
-
     if (!source || !target) return;
-    if (!fastaMap.has(source) || !fastaMap.has(target)) return;
 
     involvedProteinIds.add(source);
     involvedProteinIds.add(target);
 
     const key = source < target ? `${source}|${target}` : `${target}|${source}`;
-
     if (!edgeMap.has(key)) {
       edgeMap.set(key, { source, target, count: 1 });
     } else {
       edgeMap.get(key).count++;
     }
   });
-  console.log(`Total protéines impliquées : ${involvedProteinIds.size}`);
 
-  // Calculer degré pondéré des protéines (nœuds)
-  const degreeMap = new Map();
-  fastaData.forEach(p => {
-    degreeMap.set(p.uniprot_id.toUpperCase(), 0);
-  });
+  // Calcul des degrés
+  fastaData.forEach(p => degreeMap.set(p.uniprot_id.toUpperCase(), 0));
   edgeMap.forEach(({ source, target, count }) => {
     degreeMap.set(source, (degreeMap.get(source) || 0) + count);
     degreeMap.set(target, (degreeMap.get(target) || 0) + count);
   });
 
-  // Normalisation des tailles des nœuds
   const degrees = Array.from(degreeMap.values());
-  const [minDegree, maxDegree] = [Math.min(...degrees), Math.max(...degrees)];
+  [minDegree, maxDegree] = [Math.min(...degrees), Math.max(...degrees)];
 
-
-
-  // Créer nœuds avec taille normalisée
   const nodes = Array.from(involvedProteinIds)
       .filter(id => {
         if (!fastaMap.has(id)) return false;
-        // ✅ Si on a un filtre actif, on limite les nœuds affichés
         if (filteredProteinIds.value.length > 0) {
           return filteredProteinIds.value.includes(id);
         }
@@ -166,29 +178,17 @@ const generateGraph = async () => {
         const fastaEntry = fastaMap.get(id);
         const label = fastaEntry?.gene_name || id;
         return {
-          data: {
-            id,
-            label,
-            size
-          }
+          data: { id, label, size }
         };
       });
 
-
-
-  // Normaliser largeur des arêtes
   const edgeCounts = Array.from(edgeMap.values()).map(e => e.count);
   const [minCount, maxCount] = [Math.min(...edgeCounts), Math.max(...edgeCounts)];
-
-
 
   const edges = Array.from(edgeMap.values())
       .filter(({ source, target }) => {
         if (filteredProteinIds.value.length === 0) return true;
-        return (
-            filteredProteinIds.value.includes(source) &&
-            filteredProteinIds.value.includes(target)
-        );
+        return filteredProteinIds.value.includes(source) && filteredProteinIds.value.includes(target);
       })
       .map((edgeData, i) => ({
         data: {
@@ -196,11 +196,26 @@ const generateGraph = async () => {
           source: edgeData.source,
           target: edgeData.target,
           label: '',
-          width: normalizeWidth(edgeData.count,minCount , maxCount)
+          width: normalizeWidth(edgeData.count, minCount, maxCount)
         }
       }));
 
+  return { nodes, edges };
+}
+
+
+
+// ===== Graph =====
+const generateGraph = async () => {
+  if (cy) {
+    cy.destroy();
+    cy = null;
+  }
+
+  const { nodes, edges } = buildGraphData();
   await nextTick();
+
+
 
   // Initialiser Cytoscape
   cy = cytoscape({
@@ -239,12 +254,30 @@ const generateGraph = async () => {
         }
       },
       {
-        selector: 'edge',
+        selector: 'edge[type="inter"]',
         style: {
-          width: 'data(width)',
-          'line-color': '#ccc',
-          'target-arrow-shape': 'none',
+          'line-color': '#c819fd',
+          width: 2,
+          label: 'data(label)',
+          'font-size': 8,
+          'text-rotation': 'autorotate',
           'curve-style': 'bezier'
+        }
+      },
+      {
+        selector: 'edge[type="intra"]',
+        style: {
+          'curve-style': 'unbundled-bezier',
+          'control-point-distance': 30,
+          'control-point-weight': 0.5,
+          'loop-direction': -45,
+          'loop-sweep': 60,
+          'line-color': '#f39c12',
+          width: 2,
+          'target-arrow-shape': 'none',
+          label: 'data(abs1)',
+          'font-size': 6,
+          'text-margin-y': -10
         }
       },
       {
@@ -286,6 +319,30 @@ const generateGraph = async () => {
       const offsetY = cy.height() / 2;
       cy.pan({ x: offsetX, y: offsetY });
     }, 100);
+
+    cy.on('dragfree', 'node', evt => {
+      const dragged = evt.target;
+
+      // Si aucun noeud sélectionné, on quitte
+      if (!selectedProtein.value || !selectedProtein.value.uniprot_id) return;
+
+      const selected = selectedProtein.value.uniprot_id.toUpperCase();
+      const friseNode = cy.getElementById('frise-node');
+
+      // Si le nœud déplacé est le nœud original (désormais supprimé), on ne fait rien
+      if (dragged.data('id') !== selected) return;
+
+      // Sinon, mettre à jour la position de la frise si elle existe
+      if (friseNode.nonempty()) {
+        const pos = dragged.position();
+        friseNode.position({
+          x: pos.x,
+          y: pos.y + 120
+        });
+      }
+    });
+
+
   });
 
   cy.on('tap', 'node', evt => {
@@ -295,7 +352,38 @@ const generateGraph = async () => {
     cy.edges().style('display', 'element').style('opacity', 1);
 
     const node = evt.target;
-    const id = node.data('id').toUpperCase();
+    const rawId = node.data('id');
+    const isFrise = rawId.startsWith('frise-');
+    const id = isFrise ? rawId.replace('frise-', '') : rawId;
+
+    if (isFrise) {
+      const friseNode = cy.getElementById(rawId);
+      if (friseNode.nonempty()) {
+        const pos = friseNode.position();
+
+        cy.remove(`edge[source = "${rawId}"]`);
+        cy.remove(`edge[target = "${rawId}"]`);
+        cy.remove(friseNode);
+
+        const fastaEntry = store.fastaData.find(p => p.uniprot_id.toUpperCase() === id);
+        const degree = degreeMap.get(id) || 1;
+        const size = normalizeSize(degree, minDegree, maxDegree);
+        const label = fastaEntry?.gene_name || id;
+
+        cy.add({
+          group: 'nodes',
+          data: { id, label, size },
+          position: pos
+        });
+
+        recreateGlobalEdges();
+        selectedProtein.value = null;
+        selectedProteinCrosslinks.value = [];
+        lastFriseNodeId = null;
+        lastFriseForProtein = null;
+      }
+      return;
+    }
 
     if (selectedProtein.value && selectedProtein.value.uniprot_id.toUpperCase() === id) {
       // Si on reclique, on ferme la frise
@@ -364,29 +452,69 @@ const generateGraph = async () => {
     cy.remove('edge[type="inter"]');
     cy.remove('edge[type="intra"]');
 
-    const position = node.renderedPosition();
+    const position = node.position();
     const sequenceLength = fasta.sequence.length;
     const pxPerAA = 0.5;
     const friseWidth = sequenceLength * pxPerAA;
+    // Si une frise est déjà affichée, restaurer son nœud d'origine
+    // ✅ Place this entire block in your cy.on('tap', 'node', evt => { ... })
+//     BEFORE removing the clicked node and adding the new frise
+
+    if (lastFriseNodeId && lastFriseForProtein && lastFriseForProtein !== id) {
+      const oldFasta = store.fastaData.find(p => p.uniprot_id.toUpperCase() === lastFriseForProtein);
+      const oldFriseNode = cy.getElementById(lastFriseNodeId);
+      console.log("clic sur different nodes")
+      if (oldFasta && oldFriseNode.nonempty()) {
+        const pos = oldFriseNode.position();
+
+        cy.remove(`edge[source = \"${lastFriseNodeId}\"]`);
+        cy.remove(`edge[target = \"${lastFriseNodeId}\"]`);
+        cy.remove(oldFriseNode);
+
+        const degree = degreeMap.get(lastFriseForProtein) || 1;
+        const size = normalizeSize(degree, minDegree, maxDegree);
+        const label = oldFasta?.gene_name || lastFriseForProtein;
+
+        cy.add({
+          group: 'nodes',
+          data: {
+            id: lastFriseForProtein,
+            label,
+            size
+          },
+          position: pos
+        });
+
+        recreateGlobalEdges();
+
+        lastFriseNodeId = null;
+        lastFriseForProtein = null;
+      }
+    }
+
+    cy.remove(`node[id="${id}"]`);
+    const friseNodeId = `frise-${id}`;
 
     // Ajouter le nœud frise
     cy.add({
       group: 'nodes',
       data: {
-        id: 'frise-node',
-        label: id,
+        id: friseNodeId,
+        label: `Seq. ${id}`,
         type: 'frise',
         proteinId: id,
         sequenceLength: friseWidth
       },
       position: {
         x: position.x,
-        y: position.y + 100
+        y: position.y
       },
-      selectable: false,
-      grabbable: false,
-      locked: true
+      grabbable: true,
+      selectable: true
     });
+
+    lastFriseNodeId = friseNodeId;
+    lastFriseForProtein = id;
 
     // Créer edges "virtuels" pour visualiser les crosslinks
     store.csvData.forEach((link, i) => {
@@ -401,12 +529,13 @@ const generateGraph = async () => {
           group: 'edges',
           data: {
             id: `intra-${i}`,
-            source: 'frise-node',
-            target: 'frise-node',
+            source: friseNodeId,
+            target: friseNodeId,
             type: 'intra',
             abs1: pos1,
             abs2: pos2
-          }
+          },
+          classes: 'crosslink'
         });
       }
 
@@ -418,11 +547,13 @@ const generateGraph = async () => {
             group: 'edges',
             data: {
               id: `inter-${i}`,
-              source: 'frise-node',
+              source: friseNodeId,
               target: targetNode.id(),
               type: 'inter',
-              abs: pos1
-            }
+              abs: pos1,
+              label: `p${pos1}`
+            },
+            classes: 'crosslink'
           });
         }
       }
@@ -435,26 +566,28 @@ const generateGraph = async () => {
             group: 'edges',
             data: {
               id: `inter-${i}`,
-              source: 'frise-node',
+              source: friseNodeId,
               target: targetNode.id(),
               type: 'inter',
-              abs: pos2
-            }
+              abs: pos2,
+              label: `p${pos2}`
+
+            },
+            classes: 'crosslink'
+
           });
         }
       }
     });
-
-
   });
+
+
 }
 
 
 
 function filterGraph(query) {
   if (!cy) return;
-
-  const fastaMap = new Map(store.fastaData.map(p => [p.uniprot_id.toUpperCase(), p]));
 
   if (!query) {
     // Si la recherche est vide → tout afficher, retirer les mises en évidence
@@ -563,8 +696,7 @@ onBeforeUnmount(() => {
   flex-direction: row;
   flex-wrap: nowrap;
   width: 100vw;
-  min-height: 100vh;     /* ✅ permet de grandir si nécessaire */
-  overflow: hidden;
+  height: 90vh;
 }
 
 .graph-container {
@@ -633,6 +765,8 @@ onBeforeUnmount(() => {
 
 
 .search-input {
+  height: 41px;
+  box-sizing: border-box;
   width: 100%;
   max-width: 500px; /* Limite la largeur de la barre de recherche */
   padding: 10px 20px; /* Espacement interne pour rendre le texte plus lisible */
@@ -653,7 +787,5 @@ onBeforeUnmount(() => {
   color: #aaa; /* Couleur du texte de placeholder */
   font-style: italic; /* Style en italique */
 }
-
-
 
 </style>
