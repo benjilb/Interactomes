@@ -498,6 +498,7 @@ const generateGraph = async () => {
 
     lastFriseNodeId = friseNodeId;
     lastFriseForProtein = id;
+    const edgeSeen = new Set();
 
     // Créer edges "virtuels" pour visualiser les crosslinks
     store.csvData.forEach((link, i) => {
@@ -505,6 +506,11 @@ const generateGraph = async () => {
       const p2 = (link.Protein2 || '').trim().toUpperCase();
       const pos1 = parseInt(link.AbsPos1);
       const pos2 = parseInt(link.AbsPos2);
+
+      const key = [p1, p2, pos1, pos2].sort().join('|');
+      if (edgeSeen.has(key)) return;
+      edgeSeen.add(key);
+
 
       if (p1 === id && p2 === id) {
         // intra
@@ -546,10 +552,7 @@ const generateGraph = async () => {
 
     });
   });
-
-
 }
-
 
 
 function filterGraph(query) {
