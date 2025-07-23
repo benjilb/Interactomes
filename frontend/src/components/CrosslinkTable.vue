@@ -19,14 +19,16 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 
 const props = defineProps({
+  selectedProtein: {
+    type: Object,
+    required: false,
+    default: null
+  },
   crosslinks: {
     type: Array,
     required: true,
-  },
-  selectedProtein: {
-    type: Object,
-    required: true,
   }
+
 });
 
 // Affiche le nom ou l'ID si pas de nom
