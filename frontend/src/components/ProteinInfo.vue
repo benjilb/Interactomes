@@ -1,15 +1,33 @@
 <template>
   <div class="protein-info" v-if="protein">
-    <h3>Proteine Informations</h3>
+    <h3>Protein Information</h3>
     <ul>
       <li><strong>Uniprot ID:</strong> {{ protein.uniprot_id }}</li>
       <li><strong>Name:</strong> {{ protein.protein_name }}</li>
       <li><strong>Gene:</strong> {{ protein.gene_name }}</li>
       <li><strong>Organism:</strong> {{ protein.organism }}</li>
       <li><strong>Organism ID:</strong> {{ protein.organism_id }}</li>
-      <li><strong>Sequence:</strong>
+      <li class="sequence-header">
+        <div class="seq-label">
+          <strong>Sequence:</strong>
+          <span class="seq-size">{{ protein.sequence.length }} amino acids</span>
+        </div>
         <pre class="sequence" v-html="styledSequence"></pre>
+
+        <div class="legend">
+          <div class="legend-item">
+            <span class="legend-color intra"></span> Intra-protéine
+          </div>
+          <div class="legend-item">
+            <span class="legend-color inter"></span> Inter-protéine
+          </div>
+          <div class="legend-item">
+            <span class="legend-color both"></span> Intra + Inter
+          </div>
+        </div>
       </li>
+
+
       <li><strong>Number of unique crosslinks: </strong> {{ crosslinkStats.uniqueCount }}</li>
       <li class="crosslink-sub">- Intra-protein Crosslinks: {{ crosslinkStats.intraCount }}</li>
       <li class="crosslink-sub">- Inter-protein Crosslinks: {{ crosslinkStats.interCount }}</li>
@@ -19,7 +37,7 @@
   </div>
 
   <div v-else class="placeholder">
-    <p>Sélectionnez une protéine pour voir les détails.</p>
+    <p>Select a protein to see details.</p>
   </div>
 </template>
 
@@ -44,7 +62,7 @@ const crosslinkMap = computed(() => {
     return map
   }
 
-  console.log("Analyse des crosslinks pour :", proteinId)
+  //console.log("Analyse des crosslinks pour :", proteinId)
 
   store.csvData.forEach((entry, index) => {
     const {
@@ -74,12 +92,12 @@ const crosslinkMap = computed(() => {
       map[pos].add(isIntra ? 'intra' : 'inter')
     }
   })
-
+/*
   // Debug
   Object.entries(map).forEach(([pos, types]) => {
     console.log(`Pos ${pos} →`, Array.from(types).join(', '))
   })
-
+*/
   return map
 })
 
@@ -150,17 +168,17 @@ const styledSequence = computed(() => {
 
     let style = ''
     if (types?.has('intra') && types?.has('inter')) {
-      style = 'color: green; font-weight: bold;'
+      style = 'color: pink; font-weight: bold;'
     } else if (types?.has('intra')) {
-      style = 'color: yellow; font-weight: bold;'
+      style = 'color: orange; font-weight: bold;'
     } else if (types?.has('inter')) {
-      style = 'color: blue; font-weight: bold;'
+      style = 'color: purple; font-weight: bold;'
     }
-
+/*
     if (types) {
       console.log(`Surlignage Acide Aminé ${aa} at position ${pos} has: ${Array.from(types).join(', ')}`)
     }
-
+*/
     return `<span style="${style}">${aa}</span>`
   }).join('')
 })
@@ -212,5 +230,55 @@ h3 {
   font-size: 0.9em;
   color: gray;
 }
+
+.legend {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  font-size: 0.85rem;
+  color: white;
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 6px;
+  display: inline-block;
+}
+
+/* Correspondance des couleurs avec le style de la séquence */
+.legend-color.intra {
+  background-color: orange;
+}
+
+.legend-color.inter {
+  background-color: purple;
+}
+
+.legend-color.both {
+  background-color: pink;
+}
+
+.sequence-header .seq-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.seq-size {
+  color: #ccc;
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+
 
 </style>
