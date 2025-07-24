@@ -241,7 +241,7 @@ const generateGraph = async () => {
     },
     style: [
       {
-        selector: 'node',
+        selector: 'node[label]',
         style: {
           label: 'data(label)',
           'background-color': '#0074D9',
@@ -304,7 +304,37 @@ const generateGraph = async () => {
           'background-color': 'green',
           'text-outline-color': 'green'
         }
+      },
+      {
+        selector: 'node.ghost',
+        style: {
+          width: 0.1,
+          height: 0.1,
+          opacity: 0,
+          'background-opacity': 0
+        }
+      },
+      {
+        selector: 'edge.flag-head',
+        style: {
+          'curve-style': 'straight',
+          'target-arrow-shape': 'triangle',
+          'target-arrow-color': '#f0a31a',
+          'arrow-scale': 1.5,
+          'line-color': '#f0a31a',
+          'width': 2
+        }
+      },
+      {
+        selector: 'edge.flag-mast',
+        style: {
+          'curve-style': 'straight',
+          'line-color': '#f0a31a',
+          'width': 3,
+          'target-arrow-shape': 'none'
+        }
       }
+
     ]
   });
 
@@ -355,6 +385,10 @@ const generateGraph = async () => {
 
     const node = evt.target;
     const rawId = node.data('id');
+    // Ignore ghost nodes
+    if (rawId.startsWith('ghost-') || rawId.startsWith('flag-')) {
+      return;
+    }
     const isFrise = rawId.startsWith('frise-');
     const id = isFrise ? rawId.replace('frise-', '') : rawId;
 
@@ -363,10 +397,21 @@ const generateGraph = async () => {
       if (friseNode.nonempty()) {
         const pos = friseNode.position();
 
-        cy.remove(`edge[source = "${rawId}"]`);
-        cy.remove(`edge[target = "${rawId}"]`);
+        // 🧹 Supprimer tous les edges liés à cette frise
+        cy.edges().filter(e =>
+            ['intra', 'inter', 'flag'].includes(e.data('type')) &&
+            (e.data('source') === rawId || e.data('target') === rawId)
+        ).remove();
+
+        // 🧹 Supprimer tous les ghost/flag nodes liés
+        cy.nodes().filter(n =>
+            n.id().startsWith(`ghost-${id}-`) || n.id().startsWith(`flag-`) || n.id().startsWith(`flag-tip-`)
+        ).remove();
+
+        // Supprimer le nœud frise
         cy.remove(friseNode);
 
+        // Restaurer le nœud protéine original
         const fastaEntry = store.fastaData.find(p => p.uniprot_id.toUpperCase() === id);
         const degree = degreeMap.get(id) || 1;
         const size = normalizeSize(degree, minDegree, maxDegree);
@@ -378,7 +423,9 @@ const generateGraph = async () => {
           position: pos
         });
 
+        // 💫 Recréer les edges globaux normaux
         recreateGlobalEdges();
+
         selectedProtein.value = null;
         selectedProteinCrosslinks.value = [];
         lastFriseNodeId = null;
@@ -498,6 +545,42 @@ const generateGraph = async () => {
       selectable: true
     });
 
+    cy.on('position', 'node[id="' + friseNodeId + '"]', e => {
+      const newPos = e.target.position();
+      store.csvData.forEach(link => {
+        const p1 = (link.Protein1 || '').trim().toUpperCase();
+        const p2 = (link.Protein2 || '').trim().toUpperCase();
+        const pos1 = parseInt(link.AbsPos1);
+        const pos2 = parseInt(link.AbsPos2);
+        if (!p1 || !p2 || isNaN(pos1) || isNaN(pos2)) return;
+
+        if (p1 === id && p2 === id) {
+          const ghost1 = cy.getElementById(`ghost-${id}-${pos1}`);
+          const ghost2 = cy.getElementById(`ghost-${id}-${pos2}`);
+          const x1 = newPos.x - friseWidth / 2 + pos1 * pxPerAA;
+          const x2 = newPos.x - friseWidth / 2 + pos2 * pxPerAA;
+          if (ghost1.nonempty()) ghost1.position({ x: x1, y: newPos.y });
+          if (ghost2.nonempty()) ghost2.position({ x: x2, y: newPos.y });
+        }
+
+        if ((p1 === id && p2 !== id) || (p2 === id && p1 !== id)) {
+          const pos = p1 === id ? pos1 : pos2;
+          const ghost = cy.getElementById(`ghost-${id}-${pos}`);
+          const x = newPos.x - friseWidth / 2 + pos * pxPerAA;
+          if (ghost.nonempty()) ghost.position({ x, y: newPos.y });
+        }
+
+        if (pos1 === pos2 && (p1 === id || p2 === id)) {
+          const flag = cy.getElementById(`flag-${id}-${pos1}`);
+          if (flag.nonempty()) {
+            const x = newPos.x - friseWidth / 2 + pos1 * pxPerAA;
+            flag.position({ x, y: newPos.y });
+          }
+        }
+      });
+    });
+
+
     lastFriseNodeId = friseNodeId;
     lastFriseForProtein = id;
     const edgeSeen = new Set();
@@ -513,35 +596,172 @@ const generateGraph = async () => {
       if (edgeSeen.has(key)) return;
       edgeSeen.add(key);
 
-
+      const pxPerAA = 0.5;
+      const x1 = position.x - friseWidth / 2 + pos1 * pxPerAA;
+      const x2 = position.x - friseWidth / 2 + pos2 * pxPerAA;
+      const y = position.y;
+      // Crosslink Intra
       if (p1 === id && p2 === id) {
-        // intra
-        cy.add({
-          group: 'edges',
-          data: {
-            id: `intra-${i}`,
-            source: friseNodeId,
-            target: friseNodeId,
-            type: 'intra',
-            abs1: pos1,
-            abs2: pos2
-          },
-          classes: 'crosslink'
-        });
+        //position 1 et 2 identique
+        if (pos1 === pos2) {
+          const flagId = `flag-${id}-${pos1}`;
+          const x = position.x - friseWidth / 2 + pos1 * pxPerAA;
+          const y = position.y;
+
+// 1. Nœud à la base
+          if (cy.getElementById(flagId).length === 0) {
+            cy.add({
+              group: 'nodes',
+              data: { id: flagId },
+              position: { x, y },
+              grabbable: false,
+              selectable: false,
+              classes: 'ghost'
+            });
+          }
+
+// 2. Nœud fantôme au sommet du mât
+          const ghostTopId = `flag-top-${id}-${pos1}`;
+          if (cy.getElementById(ghostTopId).length === 0) {
+            cy.add({
+              group: 'nodes',
+              data: { id: ghostTopId },
+              position: { x, y: y - 40 },
+              grabbable: false,
+              selectable: false,
+              classes: 'ghost'
+
+            });
+          }
+
+// 3. Nœud fantôme pour la pointe du drapeau (à droite)
+          const flagTipId = `flag-tip-${id}-${pos1}`;
+          if (cy.getElementById(flagTipId).length === 0) {
+            cy.add({
+              group: 'nodes',
+              data: { id: flagTipId },
+              position: { x: x + 11.5, y: y - 40 },
+              grabbable: false,
+              selectable: false,
+              classes: 'ghost'
+
+            });
+          }
+
+// 4. Mât
+          cy.add({
+            group: 'edges',
+            data: {
+              id: `flag-mast-${i}`,
+              source: flagId,
+              target: ghostTopId
+            },
+            classes: 'crosslink flag-mast'
+          });
+
+// 5. Tête du drapeau (triangle)
+          cy.add({
+            group: 'edges',
+            data: {
+              id: `flag-head-${i}`,
+              source: ghostTopId,
+              target: flagTipId
+            },
+            classes: 'crosslink flag-head'
+          });
+
+
+          return;
+
+        }
+
+        // position 1 et 2 diff
+        else {
+          const ghostId1 = `ghost-${id}-${pos1}`;
+          const ghostId2 = `ghost-${id}-${pos2}`;
+          const x1 = position.x - friseWidth / 2 + pos1 * pxPerAA;
+          const x2 = position.x - friseWidth / 2 + pos2 * pxPerAA;
+
+          // Ajout des deux noeuds invisibles si nécessaires
+          if (cy.getElementById(ghostId1).length === 0) {
+            cy.add({
+              group: 'nodes',
+              data: {id: ghostId1},
+              position: {x: x1, y: position.y},
+              grabbable: false,
+              selectable: false,
+              classes: 'ghost',
+
+            });
+          }
+
+          if (cy.getElementById(ghostId2).length === 0) {
+            cy.add({
+              group: 'nodes',
+              data: {id: ghostId2},
+              position: {x: x2, y: position.y},
+              grabbable: false,
+              selectable: false,
+              classes: 'ghost',
+
+            });
+          }
+          const dx = Math.abs(x2 - x1) + 30;
+          const arcHeight = -dx * 1.5;
+          // Ajout de l’arche (arc de cercle) entre les deux positions
+          cy.add({
+            group: 'edges',
+            data: {
+              id: `intra-${i}`,
+              source: ghostId1,
+              target: ghostId2,
+              type: 'intra',
+              abs1: pos1,
+              abs2: pos2
+            },
+            style: {
+              'curve-style': 'unbundled-bezier',
+              'control-point-distances': [arcHeight],
+              'control-point-weights': [0.5],
+              'line-color': '#f0a31a',
+              'width': 2,
+              'target-arrow-shape': 'none'
+            },
+            classes: 'crosslink'
+          });
+
+          return;
+        }
+
       }
-
+      // Inter
       if ((p1 === id && p2 !== id) || (p2 === id && p1 !== id)) {
-        const target = p1 === id ? p2 : p1;
         const pos = p1 === id ? pos1 : pos2;
-        const targetNode = cy.nodes().filter(n => n.data('id').toUpperCase() === target);
+        const targetId = p1 === id ? p2 : p1;
+        const ghostId = `ghost-${id}-${pos}`;
 
-        if (targetNode.length) {
+        // Ajouter un noeud invisible si pas déjà là
+        if (cy.getElementById(ghostId).length === 0) {
+          const x = position.x - friseWidth / 2 + pos * pxPerAA;
+          cy.add({
+            group: 'nodes',
+            data: { id: ghostId },
+            position: { x, y },
+            grabbable: false,
+            selectable: false,
+            classes: 'ghost'
+          });
+        }
+
+
+        const targetNode = cy.getElementById(targetId);
+        if (targetNode.nonempty()) {
           cy.add({
             group: 'edges',
             data: {
               id: `inter-${i}`,
-              source: friseNodeId,
-              target: targetNode.id(),
+              source: ghostId,
+              target: targetId,
               type: 'inter',
               abs: pos,
               label: `p${pos}`
