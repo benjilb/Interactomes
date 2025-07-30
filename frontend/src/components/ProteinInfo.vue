@@ -16,10 +16,10 @@
 
         <div class="legend">
           <div class="legend-item">
-            <span class="legend-color intra"></span> Intra-protéine
+            <span class="legend-color intra"></span> Intraprotein
           </div>
           <div class="legend-item">
-            <span class="legend-color inter"></span> Inter-protéine
+            <span class="legend-color inter"></span> Interprotein
           </div>
           <div class="legend-item">
             <span class="legend-color both"></span> Intra + Inter
@@ -72,12 +72,12 @@ const crosslinkMap = computed(() => {
       AbsPos2
     } = entry
 
-
+/*
     if ( (!Protein1 || !Protein2 || !AbsPos1 || !AbsPos2 || isNaN(AbsPos1) || isNaN(AbsPos2)) && (Protein1 === proteinId || Protein2 === proteinId) ) {
       console.warn(`Crosslink ignoré à la ligne ${index + 1} : entrée invalide !`, entry)
       return
     }
-
+*/
     const isIntra = Protein1 === Protein2
 
     if (Protein1 === proteinId) {
