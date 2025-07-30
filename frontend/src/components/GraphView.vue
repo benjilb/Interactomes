@@ -5,6 +5,10 @@
       placeholder="search for a gene name, protein name, uniprot ID, sequence..."
       class="search-input"
   />
+  <label>
+    <input type="checkbox" v-model="showSelfLinks" />
+    Self-Links
+  </label>
   <div class="graph-page">
     <div class="protein-info-container">
       <ProteinInfo :protein="selectedProtein" />
@@ -68,7 +72,7 @@ let minDegree = 0, maxDegree = 1;
 
 let lastFriseNodeId = null;
 let lastFriseForProtein = null;
-
+const showSelfLinks = ref(true);
 
 
 // ===== Utils =====
@@ -112,6 +116,39 @@ function recreateGlobalEdges() {
 
   cy.add(edges);
 }
+function repositionIsolatedNodes(radius = 300) {
+  const connectedNodes = cy.nodes().filter(n => {
+    const edges = n.connectedEdges().filter(e => e.style('display') !== 'none');
+    return edges.some(e => e.data('type') === 'inter');
+  });
+
+  // Centre du cluster principal
+  const center = {
+    x: connectedNodes.map(n => n.position().x).reduce((a, b) => a + b, 0) / connectedNodes.length,
+    y: connectedNodes.map(n => n.position().y).reduce((a, b) => a + b, 0) / connectedNodes.length
+  };
+
+  // Trouve les isolés (pas de edge inter)
+  const isolatedNodes = cy.nodes().filter(n => {
+    const edges = n.connectedEdges().filter(e => e.style('display') !== 'none');
+    return edges.every(e => {
+      const t = e.data('type');
+      return t === 'intra' || t === 'flag' || e.hasClass('ghost');
+    });
+  });
+
+  // Positionner en cercle autour du centre
+  const count = isolatedNodes.length;
+  isolatedNodes.forEach((node, i) => {
+    const angle = (2 * Math.PI * i) / count;
+    const x = center.x + radius * Math.cos(angle);
+    const y = center.y + radius * Math.sin(angle);
+    node.position({ x, y });
+  });
+
+  console.log(`✅ ${count} nœuds isolés repositionnés en cercle.`);
+}
+
 
 
 function buildGraphData() {
@@ -127,7 +164,15 @@ function buildGraphData() {
     return { nodes: [], edges: [] };
   }
 
-  fastaData.forEach(p => fastaMap.set(p.uniprot_id.toUpperCase(), p));
+  fastaData.forEach(p => {
+    if (!p?.uniprot_id) {
+      console.warn("Missing uniprot_id in entry:", p);
+      return;
+    }
+    fastaMap.set(p.uniprot_id.toUpperCase(), p);
+  });
+
+  //fastaData.forEach(p => fastaMap.set(p.uniprot_id.toUpperCase(), p));
 
   const involvedProteinIds = new Set();
 
@@ -335,7 +380,7 @@ const generateGraph = async () => {
         style: {
           'curve-style': 'straight',
           'line-color': '#f0a31a',
-          'width': 3,
+          'width': 1.5,
           'target-arrow-shape': 'none',
           'events': 'no',
 
@@ -348,9 +393,36 @@ const generateGraph = async () => {
           'overlay-padding': '6px',
           'overlay-opacity': 0.3
         }
+      },
+      {
+        selector: 'node.tick-label',
+        style: {
+          'background-opacity': 0,
+          'text-outline-width': 0,
+          'color': '#ccc',
+          'font-size': 6,
+          'text-valign': 'top',
+          'text-halign': 'center',
+          'shape': 'none',
+          'width': 1,
+          'height': 1
+        }
+      },
+      {
+        selector: 'edge.tick-mark',
+        style: {
+          'line-color': '#aaa',
+          'width': 0.8,
+          'curve-style': 'straight',
+          'opacity': 0.8
+        }
       }
     ]
   });
+  // essai pour mettre les nodes isolés autour du cluster principal
+  setTimeout(() => {
+    repositionIsolatedNodes();
+  }, 1000);
 
   cy.ready(() => {
     forceCanvasAlignment();
@@ -392,19 +464,33 @@ const generateGraph = async () => {
   cy.on('tap', 'node', evt => {
     evt.preventDefault?.();
 
+    const currentFilter = filteredProteinIds.value.length > 0 ? new Set(filteredProteinIds.value.map(id => id.toUpperCase())) : null;
+
     cy.nodes().forEach(n => {
-      const id = n.id();
+      const id = n.id().toUpperCase();
+      const baseId = id.startsWith('FRISE-') ? id.replace('FRISE-', '') : id;
+      const visible = !currentFilter || currentFilter.has(baseId);
+
       const degree = degreeMap.get(id) || 1;
       const size = normalizeSize(degree, minDegree, maxDegree);
       n.style({
-        display: 'element',
+        display: visible ? 'element' : 'none',
         width: size,
         height: size,
-        opacity: 1
+        opacity: visible ? 1 : 0.1
       });
     });
 
-    cy.edges().style('display', 'element').style('opacity', 1);
+    cy.edges().forEach(e => {
+      const source = e.data('source').toUpperCase();
+      const target = e.data('target').toUpperCase();
+      const parent = (e.data('friseParent') || '').replace('FRISE-', '').toUpperCase();
+      const visible = !currentFilter || (currentFilter.has(source) && currentFilter.has(target)) || currentFilter.has(parent);
+      e.style({
+        display: visible ? 'element' : 'none',
+        opacity: visible ? 1 : 0.05
+      });
+    });
 
     const node = evt.target;
     const rawId = node.data('id');
@@ -415,6 +501,7 @@ const generateGraph = async () => {
     const isFrise = rawId.startsWith('frise-');
     const id = isFrise ? rawId.replace('frise-', '') : rawId;
 
+    //fermeture frise
     if (isFrise) {
       const friseNode = cy.getElementById(rawId);
       if (friseNode.nonempty()) {
@@ -441,6 +528,11 @@ const generateGraph = async () => {
             e.id().startsWith('flag-head-')
         ).remove();
 
+        cy.nodes().filter(n =>
+            n.id().startsWith(`tick-${id}-`)
+        ).remove();
+
+
         // Supprimer le nœud frise
         cy.remove(friseNode);
 
@@ -449,6 +541,10 @@ const generateGraph = async () => {
         const degree = degreeMap.get(id) || 1;
         const size = normalizeSize(degree, minDegree, maxDegree);
         const label = fastaEntry?.gene_name || id;
+
+        if (filteredProteinIds.value.length > 0 && !filteredProteinIds.value.includes(id)) {
+          return; // ne restaure pas le nœud si pas dans recherche
+        }
 
         cy.add({
           group: 'nodes',
@@ -608,6 +704,65 @@ const generateGraph = async () => {
       grabbable: true,
       selectable: true
     });
+    const labelStep = 100;
+
+    for (let i = 1; i <= sequenceLength; i++) {
+      if (i === 1 || i % labelStep === 0){
+
+        const tickId = `tick-${id}-${i}`;
+        const x = node.position().x - friseWidth / 2 + i * pxPerAA;
+
+        cy.add({
+          group: 'nodes',
+          data: {
+            id: tickId,
+            label: `${i}`,
+            friseParent: `frise-${id}`
+          },
+          position: { x: x, y: node.position().y + 35 },  // ⬅️ SOUS la frise
+          grabbable: false,
+          selectable: false,
+          classes: 'tick-label'
+        });
+        const tickMarkId = `tick-mark-${id}-${i}`;
+        const markStartId = `tick-ghost-start-${id}-${i}`;
+        const markEndId = `tick-ghost-end-${id}-${i}`;
+        const markX = x;
+        const markY1 = node.position().y + 20; // Bas de la frise
+        const markY2 = node.position().y + 25; // Trait de 5px
+
+        // Ajoute deux points invisibles pour tracer le trait de la graduation
+        cy.add([
+          {
+            group: 'nodes',
+            data: { id: markStartId, friseParent: `frise-${id}` },
+            position: { x: markX, y: markY1 },
+            grabbable: false,
+            selectable: false,
+            classes: 'ghost'
+          },
+          {
+            group: 'nodes',
+            data: { id: markEndId, friseParent: `frise-${id}` },
+            position: { x: markX, y: markY2 },
+            grabbable: false,
+            selectable: false,
+            classes: 'ghost'
+          },
+          {
+            group: 'edges',
+            data: {
+              id: tickMarkId,
+              source: markStartId,
+              target: markEndId,
+              friseParent: `frise-${id}`
+            },
+            classes: 'tick-mark'
+          }
+        ]);
+
+      }
+    }
     // Atténuer les autres éléments
     cy.nodes().forEach(n => {
       if (!n.id().startsWith(`frise-${id}`) &&
@@ -637,6 +792,46 @@ const generateGraph = async () => {
       cy.add(json); // réinjection = top-layer
     }
     const position = friseNode.position();
+
+    //pour que la graduation suive la dfr
+    cy.on('position', 'node[type="frise"]', evt => {
+      const frise = evt.target;
+      const friseId = frise.id();
+      const friseX = frise.position('x');
+      const friseY = frise.position('y');
+      const sequenceLength = frise.data('sequenceLength');
+      const friseWidth = frise.width(); // largeur actuelle de la frise
+      const pxPerAA = 0.5;
+
+      // Met à jour les ticks
+      cy.nodes().filter(n =>
+          n.data('friseParent') === friseId &&
+          n.hasClass('tick-label')
+      ).forEach(tick => {
+        const residueNumber = parseInt(tick.data('label'));
+        const offsetX = (residueNumber * pxPerAA) - friseWidth / 2;
+        const x = friseX + offsetX;
+        const y = friseY + 35; // sous la frise
+        tick.position({ x, y });
+      });
+
+      // Met à jour les traits tick-mark
+      cy.edges().filter(e => e.hasClass('tick-mark') && e.data('friseParent') === friseId).forEach(e => {
+        const i = parseInt(e.id().split('-').pop());
+        const offsetX = (i * pxPerAA) - friseWidth / 2;
+        const markX = friseX + offsetX;
+        const markY1 = friseY + 20;
+        const markY2 = friseY + 25;
+
+        const start = cy.getElementById(`tick-ghost-start-${id}-${i}`);
+        const end = cy.getElementById(`tick-ghost-end-${id}-${i}`);
+        start.position({ x: markX, y: markY1 });
+        end.position({ x: markX, y: markY2 });
+      });
+
+    });
+;
+
     cy.on('position', 'node[id="' + friseNodeId + '"]', e => {
       const newPos = e.target.position();
 
@@ -645,6 +840,7 @@ const generateGraph = async () => {
         const p2 = (link.Protein2 || '').trim().toUpperCase();
         const pos1 = parseInt(link.AbsPos1);
         const pos2 = parseInt(link.AbsPos2);
+
         if (!p1 || !p2 || isNaN(pos1) || isNaN(pos2)) return;
 
         if (p1 === id && p2 === id) {
@@ -682,7 +878,7 @@ const generateGraph = async () => {
         if (flagNode.id().startsWith(`flag-top-`)) {
           flagNode.position({ x: newX, y: newPos.y - 40 });
         } else if (flagNode.id().startsWith(`flag-tip-`)) {
-          flagNode.position({ x: newX + 11.5, y: newPos.y - 40 });
+          flagNode.position({ x: newX + 12.2, y: newPos.y - 40 });
         } else {
           flagNode.position({ x: newX, y: newPos.y });
         }
@@ -710,6 +906,7 @@ const generateGraph = async () => {
       edgeSeen.add(key);
 
       const pxPerAA = 0.5;
+      if ((p1 === p2) && !showSelfLinks.value) return;  // Skip self-links
 
       // Crosslink Intra
       if (p1 === id && p2 === id) {
@@ -758,7 +955,7 @@ const generateGraph = async () => {
                 id: flagTipId,
                 friseParent: `frise-${id}`
               },
-              position: { x: x + 11.5, y: y - 40 },
+              position: { x: x + 12.2, y: y - 40 },
               grabbable: false,
               selectable: false,
               classes: 'ghost flag'
@@ -797,12 +994,12 @@ const generateGraph = async () => {
           const x1 = position.x - friseWidth / 2 + pos1 * pxPerAA;
           const x2 = position.x - friseWidth / 2 + pos2 * pxPerAA;
 
-          // Ajout des deux noeuds invisibles si nécessaires
+// Ajout des deux noeuds invisibles si nécessaires
           if (cy.getElementById(ghostId1).length === 0) {
             cy.add({
               group: 'nodes',
-              data: {id: ghostId1, friseParent: `frise-${id}` },
-              position: {x: x1, y: position.y},
+              data: { id: ghostId1, friseParent: `frise-${id}` },
+              position: { x: x1, y: position.y },
               grabbable: false,
               selectable: false,
               classes: 'ghost',
@@ -812,16 +1009,21 @@ const generateGraph = async () => {
           if (cy.getElementById(ghostId2).length === 0) {
             cy.add({
               group: 'nodes',
-              data: {id: ghostId2, friseParent: `frise-${id}`},
-              position: {x: x2, y: position.y},
+              data: { id: ghostId2, friseParent: `frise-${id}` },
+              position: { x: x2, y: position.y },
               grabbable: false,
               selectable: false,
               classes: 'ghost',
             });
           }
-          const dx = Math.abs(x2 - x1) + 30;
-          const arcHeight = -dx * 1.5;
-          // Ajout de l’arche (arc de cercle) entre les deux positions
+
+          const rawDx = Math.abs(x2 - x1); // distance brute en px
+
+// 🔁 Normalisation logarithmique pour écraser les grandes distances
+          const normalizedDx = Math.log2(rawDx + 10); // +10 pour éviter log(0)
+          const arcHeight = -normalizedDx * 25; // facteur d’échelle à ajuster
+
+// Ajout de l’arche (arc de cercle) entre les deux positions
           cy.add({
             group: 'edges',
             data: {
@@ -843,8 +1045,6 @@ const generateGraph = async () => {
             },
             classes: 'crosslink'
           });
-
-          return;
         }
 
       }
@@ -900,8 +1100,6 @@ const generateGraph = async () => {
           console.log(`[ADD] Edge inter: ${ghostId} ➝ ${targetId}`);
         }
       }
-
-
     });
   });
 
@@ -933,36 +1131,25 @@ const generateGraph = async () => {
 function filterGraph(query) {
   if (!cy) return;
 
-  if (!query) {
-    // Si la recherche est vide → tout afficher, retirer les mises en évidence
-    filteredProteinIds.value = [];
-    cy.nodes().forEach(node => {
-      node.style('display', 'element');
-      node.removeClass('matched');
-    });
-    cy.edges().style('display', 'element');
-    return;
-  }
-
-  // 🔍 Protéines qui correspondent au texte saisi
-  const matchedProteins = store.fastaData.filter(p => {
-    const fields = [
-      p.uniprot_id,
-      p.protein_name,
-      p.gene_name,
-      p.organism,
-      p.organism_id,
-      p.sequence
-    ];
-    return fields.some(field =>
-        typeof field === 'string' && field.toLowerCase().includes(query)
-    );
-  });
+  const matchedProteins = query
+      ? store.fastaData.filter(p => {
+        const fields = [
+          p.uniprot_id,
+          p.protein_name,
+          p.gene_name,
+          p.organism,
+          p.organism_id,
+          p.sequence
+        ];
+        return fields.some(field =>
+            typeof field === 'string' && field.toLowerCase().includes(query)
+        );
+      })
+      : store.fastaData;
 
   const matchedIds = new Set(matchedProteins.map(p => p.uniprot_id.toUpperCase()));
   const linkedIds = new Set();
 
-  //Trouver les voisines (protéines liées aux matches via des crosslinks)
   store.csvData.forEach(link => {
     const p1 = (link.Protein1 || '').trim().toUpperCase();
     const p2 = (link.Protein2 || '').trim().toUpperCase();
@@ -972,6 +1159,8 @@ function filterGraph(query) {
 
   const finalVisibleIds = new Set([...matchedIds, ...linkedIds]);
   filteredProteinIds.value = Array.from(finalVisibleIds);
+
+// 🔁 Mêmes boucles cy.nodes() et cy.edges() que maintenant, elles seront appelées même sans recherche.
 
   //Affichage et marquage des nœuds
   cy.nodes().forEach(node => {
@@ -984,7 +1173,7 @@ function filterGraph(query) {
     node.style('display', visible ? 'element' : 'none');
 
     // Mettre en évidence uniquement les protéines directement matchées
-    if (matchedIds.has(rawId)) {
+    if (query && matchedIds.has(rawId)) {
       if (id.startsWith('FRISE-')) {
         node.addClass('frise-highlight');
       } else {
@@ -994,22 +1183,25 @@ function filterGraph(query) {
       node.removeClass('matched');
       node.removeClass('frise-highlight');
     }
+
   });
 
 
   //Affichage des arêtes uniquement si les deux extrémités sont visibles
   cy.edges().forEach(edge => {
-    const source = edge.data('source').toUpperCase();
-    const target = edge.data('target').toUpperCase();
+    const source = edge.data('source')?.toUpperCase();
+    const target = edge.data('target')?.toUpperCase();
     const friseParent = (edge.data('friseParent') || '').replace('FRISE-', '').toUpperCase();
 
+    const isSelfLink = source === target;
     const bothVisible = finalVisibleIds.has(source) && finalVisibleIds.has(target);
     const friseMatched = matchedIds.has(friseParent);
 
-    const visible = bothVisible || friseMatched;
+    const visible = (!isSelfLink || showSelfLinks.value) && (bothVisible || friseMatched);
 
     edge.style('display', visible ? 'element' : 'none');
   });
+
 
 }
 
@@ -1035,6 +1227,10 @@ onMounted(async () => {
 watch(searchQuery, (newQuery) => {
   console.log(newQuery);
   filterGraph(newQuery.trim().toLowerCase());
+});
+
+watch(showSelfLinks, () => {
+  filterGraph(searchQuery.value.trim().toLowerCase());
 });
 
 
