@@ -38,10 +38,10 @@
 <script setup>
 import {ref,onMounted, watch, onBeforeUnmount, nextTick} from 'vue'
 import { useDataStore } from '@/store/dataStore'
-import ProteinInfo from '@/components/ProteinInfo.vue'
 import cytoscape from 'cytoscape';
 import coseBilkent from 'cytoscape-cose-bilkent';
 import CrosslinkTable from '@/components/CrosslinkTable.vue';
+import ProteinInfo from '@/components/ProteinInfo.vue'
 
 cytoscape.use(coseBilkent);
 
@@ -799,7 +799,6 @@ const generateGraph = async () => {
       const friseId = frise.id();
       const friseX = frise.position('x');
       const friseY = frise.position('y');
-      const sequenceLength = frise.data('sequenceLength');
       const friseWidth = frise.width(); // largeur actuelle de la frise
       const pxPerAA = 0.5;
 
@@ -830,7 +829,7 @@ const generateGraph = async () => {
       });
 
     });
-;
+
 
     cy.on('position', 'node[id="' + friseNodeId + '"]', e => {
       const newPos = e.target.position();

@@ -8,6 +8,8 @@
 <script setup>
 import UploadPanel from '@/components/UploadPanel.vue'
 import Header from "@/components/Header.vue";
+import GraphiqueHomePage from "@/components/GraphiqueHomePage.vue";
+
 </script>
 
 <style scoped>
