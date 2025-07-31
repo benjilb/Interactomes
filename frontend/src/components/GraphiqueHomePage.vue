@@ -1,5 +1,4 @@
 <template>
-  GRAPHIQUE D3
   <div ref="graphContainer" class="graph-container"></div>
 </template>
 
