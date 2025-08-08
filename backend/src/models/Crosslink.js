@@ -1,48 +1,49 @@
-// src/models/crosslink.model.js
+import { DataTypes } from 'sequelize';
+import sequelize from '../database/config.js';
+import Protein from './Protein.js';
 
-import { pool } from '../config/database.js';
+const Crosslink = sequelize.define('Crosslink', {
+    id: {
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        primaryKey: true
+    },
+    protein1_id: {
+        type: DataTypes.STRING(20),
+        allowNull: false
+    },
+    protein2_id: {
+        type: DataTypes.STRING(20),
+        allowNull: false
+    },
+    abspos1: {
+        type: DataTypes.INTEGER,
+        allowNull: false
+    },
+    abspos2: {
+        type: DataTypes.INTEGER,
+        allowNull: false
+    },
+    score: {
+        type: DataTypes.FLOAT
+    }
+}, {
+    tableName: 'crosslinks',
+    timestamps: false
+});
 
-/**
- * Insère un crosslink dans la base de données
- * @param {Object} crosslink - Objet avec les champs :
- * {
- *   score,
- *   protein1_uniprot_id,
- *   protein2_uniprot_id,
- *   absolute_position1,
- *   absolute_position2
- * }
- */
-export async function insertCrosslink(crosslink) {
-    const [result] = await pool.query(`
-    INSERT INTO crosslink (
-      score,
-      protein1_uniprot_id,
-      protein2_uniprot_id,
-      absolute_position1,
-      absolute_position2
-    ) VALUES (?, ?, ?, ?, ?)
-  `, [
-        crosslink.score,
-        crosslink.protein1_uniprot_id,
-        crosslink.protein2_uniprot_id,
-        crosslink.absolute_position1,
-        crosslink.absolute_position2
-    ]);
-    return result;
-}
+// Relations (Foreign Keys)
+Crosslink.belongsTo(Protein, {
+    foreignKey: 'protein1_id',
+    targetKey: 'uniprot_id',
+    as: 'Protein1'
+});
 
-/**
- * Récupère tous les crosslinks
- */
-export async function getAllCrosslinks() {
-    const [rows] = await pool.query(`SELECT * FROM crosslink`);
-    return rows;
-}
+Crosslink.belongsTo(Protein, {
+    foreignKey: 'protein2_id',
+    targetKey: 'uniprot_id',
+    as: 'Protein2'
+});
 
-/**
- * Supprime tous les crosslinks (utile pour réimportation)
- */
-export async function deleteAllCrosslinks() {
-    await pool.query(`DELETE FROM crosslink`);
-}
+
+export default Crosslink;
