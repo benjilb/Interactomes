@@ -2,7 +2,7 @@
   <header class="app-header">
     <div class="header-left">
       <img src="@/assets/logo/logo-Interactomes.png" alt="Logo Interactomes" class="logo" />
-      <h1 class="title">Interactomes</h1>
+      <h1 class="title">Interactomes aaaaa</h1>
     </div>
     <div class="header-right">
       <button class="profile-button" aria-label="Profil">
@@ -15,7 +15,6 @@
 </template>
 
 <script setup>
-// Pas besoin d'importer l'image si elle est utilisée dans src (par chemin relatif)
 </script>
 
 <style scoped>

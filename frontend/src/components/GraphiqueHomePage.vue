@@ -2,19 +2,13 @@
   <div ref="graphContainer" class="graph-container"></div>
 </template>
 
-
 <script setup>
 
 import * as d3 from 'd3'
 import { onMounted, ref } from 'vue'
-import { parseCsv } from '@/utils/csvParser'
 
 const graphContainer = ref(null)
 
-const csvFiles = [
-  //{ path: '/data/Bovinecilia.csv', clusterId: 'bovine' },
-  { path: '/data/cyanophoraXL_combmethodbis.csv', clusterId: 'cyano' }
-]
 
 onMounted(async () => {
   const nodes = []
@@ -22,30 +16,30 @@ onMounted(async () => {
   const nodeMap = new Map()
   let counter = 0
 
-  for (const file of csvFiles) {
-    const raw = await fetch(file.path).then(r => r.text())
-    const parsed = parseCsv(raw)
+  const response = await fetch('http://localhost:3001/api/crosslinks')
+  const parsed = await response.json()
 
-    parsed.forEach(row => {
-      const sourceId = `${file.clusterId}-${row.Protein1}-${row.AbsPos1}`
-      const targetId = `${file.clusterId}-${row.Protein2}-${row.AbsPos2}`
+  parsed.forEach(row => {
+    const sourceId = `cyano-${row.Protein1}-${row.AbsPos1}`
+    const targetId = `cyano-${row.Protein2}-${row.AbsPos2}`
 
-      if (!nodeMap.has(sourceId)) {
-        nodeMap.set(sourceId, { id: sourceId, cluster: file.clusterId, index: counter++ })
-        nodes.push(nodeMap.get(sourceId))
-      }
-      if (!nodeMap.has(targetId)) {
-        nodeMap.set(targetId, { id: targetId, cluster: file.clusterId, index: counter++ })
-        nodes.push(nodeMap.get(targetId))
-      }
+    if (!nodeMap.has(sourceId)) {
+      nodeMap.set(sourceId, { id: sourceId, cluster: 'cyano', index: counter++ })
+      nodes.push(nodeMap.get(sourceId))
+    }
+    if (!nodeMap.has(targetId)) {
+      nodeMap.set(targetId, { id: targetId, cluster: 'cyano', index: counter++ })
+      nodes.push(nodeMap.get(targetId))
+    }
 
-      links.push({
-        source: nodeMap.get(sourceId),
-        target: nodeMap.get(targetId),
-        score: row.Score
-      })
+    links.push({
+      source: nodeMap.get(sourceId),
+      target: nodeMap.get(targetId),
+      score: row.Score
     })
-  }
+  })
+
+
 
   drawGraph(nodes, links)
 })

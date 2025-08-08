@@ -1,7 +1,8 @@
 <template>
   <div class="home">
+
     <Header />
-    <UploadPanel />
+    <GraphiqueHomePage/>
   </div>
 </template>
 

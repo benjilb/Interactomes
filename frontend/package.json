@@ -4,16 +4,22 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "cytoscape": "^3.32.0",
     "pinia": "^3.0.3",
-    "vue": "^3.5.13"
+    "vue": "^3.5.13",
+    "cytoscape-cose-bilkent": "^4.1.0",
+    "d3": "^7.9.0",
+    "primeicons": "^7.0.0",
+    "primevue": "^4.3.6",
+    "vue-router": "^4.5.1"
   },
   "devDependencies": {
+    "@types/d3": "^7.4.3",
     "@vitejs/plugin-vue": "^5.2.3",
     "vite": "^6.3.5"
   }
