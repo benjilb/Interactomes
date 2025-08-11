@@ -1,60 +1,92 @@
-import fs from 'fs';
+// backend/src/database/importData.js
 import path from 'path';
-import sequelize from './config.js';
-import Protein from '../models/Protein.js';
-import Crosslink from '../models/Crosslink.js';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
-import { parseFasta } from '../parsers/parseFasta.js';
-import { parseCsv } from '../parsers/parseCsv.js';
+import { sequelize } from '../models/index.js';
+import {parseCsv} from '../parsers/parseCsv.js';
 
-const FASTA_DIR = 'static/fasta';
-const CSV_DIR = 'static/csv';
+// Services
+import { parseFilename, normalizeRow, getOrganismFromProtein } from '../services/crosslinkService.js';
+import { ensureOrganism } from '../services/organismService.js';
+import { ensureOrganelleByName } from '../services/organelleService.js';
+import { ensureProteinsForOrganism } from '../services/proteinService.js';
+import { createDatasetAndInsert } from '../services/datasetService.js';
+import { ensureSeedUser } from '../services/userService.js';
 
-async function importData() {
-    await sequelize.authenticate();
-    await sequelize.sync({});
-    console.log('✅ Connexion DB OK');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-    // Import proteins
-    const fastaFiles = fs.readdirSync(FASTA_DIR).filter(f => f.endsWith('.fasta'));
-    for (const file of fastaFiles) {
-        const proteins = parseFasta(path.join(FASTA_DIR, file));
-        let count = 0;
+// Dossier CSV seed
+const CSV_DIR = path.resolve(__dirname, '../../static/csv');
 
-        for (const p of proteins) {
-            if (!p.uniprot_id) continue;
-            await Protein.upsert(p);
-            count++;
-        }
+async function importOneFile(fileName) {
+    const filePath = path.join(CSV_DIR, fileName);
 
-        console.log(`✅ ${count} protéines importées depuis ${file}`);
+    // 1) Extraire organism/organelle du nom de fichier
+    const meta = parseFilename(fileName);
+    if (!meta) throw new Error(`Nom de fichier invalide (attendu Organism_Organelle.csv): ${fileName}`);
+
+    // 2) Parser CSV
+    const parsedRows = await parseCsv(filePath); // doit retourner tableau d’objets
+    const rows = parsedRows.map(normalizeRow).filter(Boolean);
+    if (!rows.length) throw new Error(`CSV vide ou colonnes invalides: ${fileName}`);
+
+    // 3) Récupérer organism via 1er UniProtID du CSV
+    const firstProtein = rows[0].protein1_uid || rows[0].protein2_uid;
+    if (!firstProtein) throw new Error(`Impossible de trouver un UniProtID dans ${fileName}`);
+
+    const orgInfo = await getOrganismFromProtein(firstProtein);
+    const organism = await ensureOrganism(orgInfo);
+    console.log('🔎 organism from UniProt:', organism?.toJSON?.() ?? organism);
+// tu dois voir { taxon_id: 9913, name: 'Bos taurus', ... }
+
+    // 4) Récupérer/Créer organelle
+    const organelle = await ensureOrganelleByName(meta.organelleName);
+
+    // 5) Assurer les proteins
+    const uniqProteins = new Set();
+    for (const r of rows) {
+        uniqProteins.add(r.protein1_uid);
+        uniqProteins.add(r.protein2_uid);
     }
+    + await ensureProteinsForOrganism([...uniqProteins], organism.taxon_id);
 
-    // Import crosslinks
-    const csvFiles = fs.readdirSync(CSV_DIR).filter(f => f.endsWith('.csv'));
-    for (const file of csvFiles) {
-        const crosslinks = parseCsv(path.join(CSV_DIR, file));
-        let count = 0;
+    // 6) Créer dataset + insérer crosslinks
+    const user = await ensureSeedUser();
+    const dataset = await createDatasetAndInsert({
+        userId: user.id,
+        organismTaxonId: organism.taxon_id,
+        organelleId: organelle.id,
+        filename: fileName,
+        filePath,
+        rows
+    });
 
-        for (const cl of crosslinks) {
-            try {
-                await Crosslink.create({
-                    protein1_id: cl.Protein1,
-                    protein2_id: cl.Protein2,
-                    abspos1: cl.AbsPos1,
-                    abspos2: cl.AbsPos2,
-                    score: cl.Score
-                });
-                count++;
-            } catch (err) {
-                console.warn(`⚠️ Ligne ignorée: ${cl.Protein1}-${cl.Protein2} (${err.message})`);
-            }
-        }
-
-        console.log(`✅ ${count} crosslinks importés depuis ${file}`);
-    }
-
-    console.log('✅ Import terminé');
+    return { datasetId: dataset.id, organism: organism.name, organelle: organelle.name, n: rows.length };
 }
 
-importData().catch(console.error);
+async function main() {
+    await sequelize.authenticate();
+
+    const files = (await fs.promises.readdir(CSV_DIR))
+        .filter(f => f.toLowerCase().endsWith('.csv'));
+
+    if (!files.length) {
+        console.log('Aucun CSV trouvé dans', CSV_DIR);
+        process.exit(0);
+    }
+
+    for (const f of files) {
+        try {
+            const res = await importOneFile(f);
+            console.log(`✅ ${f} → dataset ${res.datasetId} (${res.organism}/${res.organelle}) : ${res.n} lignes`);
+        } catch (e) {
+            console.error(`❌ ${f}: ${e.message}`);
+        }
+    }
+
+    process.exit(0);
+}
+
+main().catch(e => { console.error(e); process.exit(1); });

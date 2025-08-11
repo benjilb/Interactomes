@@ -1,13 +1,11 @@
-import sequelize from './config.js';
-import Protein from '../models/Protein.js';
-import Crosslink from '../models/Crosslink.js';
+import { sequelize } from '../models/index.js';
+
 
 async function initDB() {
     try {
         console.log("Connecting to the database...");
-        await sequelize.sync();
-        console.log('🌱 ENV:', process.env.DB_NAME, process.env.DB_USER, process.env.DB_PASSWORD);
         await sequelize.authenticate();
+        console.log('🌱 ENV:', process.env.DB_NAME, process.env.DB_USER, process.env.DB_PASSWORD);
         console.log('✅ Connexion DB OK');
 
         // Synchronisation des modèles
