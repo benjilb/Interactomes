@@ -101,31 +101,31 @@ async function fetchUniProtEntry(uniprotId) {
  */
 // src/services/proteinService.js
 export async function ensureProteinsForOrganism(uniprotIds, taxId, transaction = null) {
-    if (!Number.isInteger(taxId)) {
-        throw new Error(`ensureProteinsForOrganism: invalid taxId "${taxId}"`);
-    }
-    const uniq = Array.from(new Set(uniprotIds.filter(u => !isBadAccession(u)).map(s => String(s).trim())));
+    if (!Number.isInteger(taxId)) throw new Error(`ensureProteinsForOrganism: invalid taxId "${taxId}"`);
 
-    await Promise.all(
-        uniq.map(uid => limit(async () => {
+    const uniq = Array.from(new Set(uniprotIds.filter(u => !isBadAccession(u)).map(s => String(s).trim())));
+    for (const uid of uniq) {
+        await limit(async () => {
             try {
                 const entry = await fetchUniProtEntry(uid);
-                const payload = mapEntryToProteinPayload(entry, taxId);
+                const payload = mapEntryToProteinPayload(entry, taxId); // garde taxon_id = taxId
                 if (payload.source_tax_id && taxId !== payload.source_tax_id) {
                     console.warn(`[proteinService] TaxID mismatch for ${uid}: dataset=${taxId} uniProt=${payload.source_tax_id}`);
                 }
                 await Protein.upsert(payload, { transaction });
+                console.log(`[proteinService] upsert OK: ${uid} (taxon=${taxId})`);
             } catch (e) {
                 console.error(`[proteinService] Failed UniProt fetch/upsert for ${uid}: ${e.message}`);
-                // fallback minimal, mais en FORÇANT un taxon_id non nul
-                await Protein.findOrCreate({
+                // fallback minimal mais taxon non nul
+                const [row, created] = await Protein.findOrCreate({
                     where: { uniprot_id: uid },
                     defaults: { uniprot_id: uid, taxon_id: taxId },
                     transaction
                 });
+                console.log(`[proteinService] ${created ? 'created' : 'exists'} minimal: ${uid} (taxon=${taxId})`);
             }
-        }))
-    );
+        });
+    }
 }
 
 

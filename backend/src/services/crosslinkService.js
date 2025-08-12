@@ -10,11 +10,6 @@ function parseFilename(fileName) {
 }
 
 // --- helpers ---
-
-function cleanAcc(v) {
-    return String(v ?? '').trim();
-}
-
 function isBadAccession(acc) {
     if (!acc) return true;
     const up = acc.toUpperCase();
@@ -26,8 +21,8 @@ function isBadAccession(acc) {
 }
 
 function normalizeRow(row) {
-    let p1 = cleanAcc(row.uniprot1 || row.Protein1 || row.protein1);
-    let p2 = cleanAcc(row.uniprot2 || row.Protein2 || row.protein2);
+    let p1 = String(row.uniprot1 || row.Protein1 || row.protein1 || '').trim();
+    let p2 = String(row.uniprot2 || row.Protein2 || row.protein2 || '').trim();
 
     // p2 <- p1 si vide/NA/ambiguous/etc.
     if (isBadAccession(p2)) p2 = p1;

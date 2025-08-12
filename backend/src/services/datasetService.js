@@ -1,51 +1,38 @@
-import fs from 'fs';
-import crypto from 'crypto';
-import { Dataset, Crosslink, sequelize } from '../models/index.js';
+// src/services/datasetService.js
+import { Dataset, Crosslink } from '../models/index.js';
 
-async function sha256File(filePath) {
-    const buf = await fs.promises.readFile(filePath);
-    return crypto.createHash('sha256').update(buf).digest('hex');
-}
-
-export async function createDatasetAndInsert({
-                                                 userId, organism_taxon_id, organelleId, filename, filePath, rows
-                                             }) {
-    const t = await sequelize.transaction();
-    try {
-        const file_sha256 = await sha256File(filePath);
-        const dataset = await Dataset.create({
+export async function createDatasetAndInsert({ userId, organismTaxonId, organelleId, filename, filePath, rows }) {
+    const [dataset, created] = await Dataset.findOrCreate({
+        where: { user_id: userId, filename },
+        defaults: {
             user_id: userId,
-            organism_taxon_id: organism_taxon_id,
+            organism_taxon_id: organismTaxonId,
             organelle_id: organelleId,
             filename,
-            file_sha256,
             status: 'uploaded'
-        }, { transaction: t });
-
-        // Préparer crosslinks
-        const payload = rows.map(r => ({
-            dataset_id: dataset.id,
-            protein1_uid: r.protein1_uid,
-            protein2_uid: r.protein2_uid,
-            abspos1: r.abspos1,
-            abspos2: r.abspos2,
-            score: r.score ?? null
-        }));
-
-        // Insert en chunks
-        const CHUNK = 5000;
-        for (let i = 0; i < payload.length; i += CHUNK) {
-            await Crosslink.bulkCreate(payload.slice(i, i + CHUNK), {
-                ignoreDuplicates: true,
-                transaction: t
-            });
         }
+    });
+    console.log(`[datasetService] dataset ${created ? 'created' : 'exists'} #${dataset.id} (${filename}) taxon=${organismTaxonId}`);
 
-        await dataset.update({ status: 'parsed', rows_count: payload.length }, { transaction: t });
-        await t.commit();
-        return dataset;
-    } catch (err) {
-        await t.rollback();
-        throw err;
+    // insérer les crosslinks avec log par ligne (attention : verbeux)
+    let ok = 0, dupeOrFk = 0;
+    for (const r of rows) {
+        try {
+            await Crosslink.create({
+                dataset_id: dataset.id,
+                protein1_uid: r.protein1_uid,
+                protein2_uid: r.protein2_uid,
+                abspos1: r.abspos1,
+                abspos2: r.abspos2,
+                score: r.score ?? null
+            });
+            ok++;
+            console.log(`[crosslink] + ${r.protein1_uid}:${r.abspos1} -> ${r.protein2_uid}:${r.abspos2} (score=${r.score ?? ''})`);
+        } catch (e) {
+            dupeOrFk++;
+            console.warn(`[crosslink] ! skipped ${r.protein1_uid}:${r.abspos1} -> ${r.protein2_uid}:${r.abspos2} (${e.message})`);
+        }
     }
+    console.log(`[datasetService] crosslinks inserted=${ok}, skipped=${dupeOrFk}`);
+    return dataset;
 }

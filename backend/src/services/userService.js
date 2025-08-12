@@ -1,18 +1,11 @@
-// backend/src/services/userService.js
-import bcrypt from 'bcrypt';
+// src/services/userService.js
 import { User } from '../models/index.js';
 
-export async function ensureSeedUser() {
-    const email = 'admin@mail.com';
-    let user = await User.findOne({ where: { email } });
-    if (!user) {
-        const password_hash = await bcrypt.hash('engellab', 12);
-        user = await User.create({
-            email,
-            first_name: 'Caitlyn',
-            last_name: 'McCafferty',
-            password_hash
-        });
-    }
-    return user;
+export async function ensureSeedUser(email='importer@local') {
+    const [u, created] = await User.findOrCreate({
+        where: { email },
+        defaults: { email, first_name: 'Importer', last_name: 'Bot', password_hash: 'x' }
+    });
+    console.log(`[userService] user ${created ? 'created' : 'exists'} #${u.id} <${email}>`);
+    return u;
 }
