@@ -17,7 +17,6 @@ const Crosslink = sequelize.define('Crosslink', {
         { fields: ['protein1_uid'] },
         { fields: ['protein2_uid'] },
         { fields: ['protein1_uid', 'protein2_uid'] },
-        { name: 'fields crosslinks', unique: true, fields: ['dataset_id', 'protein1_uid', 'protein2_uid', 'abspos1', 'abspos2'] }
     ]
 });
 
