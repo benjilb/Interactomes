@@ -2,7 +2,14 @@
   <div class="home">
 
     <Header />
-    <GraphiqueHomePage/>
+    <section style="max-width:800px; margin:40px auto;">
+      <h1>Bienvenue 👋</h1>
+      <p>Cette page est publique. Vous pouvez consulter le site sans être connecté.</p>
+      <ul>
+        <li>Créez un compte ou connectez-vous via les boutons en haut.</li>
+        <li>Une fois connecté, accédez à <RouterLink to="/account">Mon compte</RouterLink>.</li>
+      </ul>
+    </section>
   </div>
 </template>
 
