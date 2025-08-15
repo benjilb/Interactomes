@@ -1,7 +1,5 @@
 <template>
   <div class="home">
-
-    <Header />
     <section style="max-width:800px; margin:40px auto;">
       <h1>Bienvenue 👋</h1>
       <p>Cette page est publique. Vous pouvez consulter le site sans être connecté.</p>
@@ -25,15 +23,15 @@ h1 {
   margin-top: 0;
 }
 
+/* Home.vue */
 .home {
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
   align-items: center;
-
-  height: 100vh;
-  width: 100vw;
-
+  /* width: 100vw; height: 100vh;  ← SUPPRIMER */
+  width: 100%;
+  min-height: calc(100vh - var(--header-height)); /* cohérent avec les autres pages */
   box-sizing: border-box;
 }
+
 </style>
