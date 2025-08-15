@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { sha256File } from '../utils/hashFile.js';
-import { parseCsv } from '../utils/csv.js';
+import { parseCsv } from '../parsers/parseCsv.js';
 import { guessOrganelleNameFromFilename } from '../services/organelleName.js';
 import { getTaxonIdFromAcc, getProteinInfo } from '../services/uniprot.js';
 
@@ -26,87 +26,99 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Helpers
+// —— helpers ——
+
+// Organelles: crée/retourne par name (name peut être "Cilia" ou "allCell")
 async function findOrCreateOrganelleByName(name) {
-    const [org] = await Organelle.findOrCreate({
-        where: { name },
-        defaults: { name }
-    });
+    const [org] = await Organelle.findOrCreate({ where: { name }, defaults: { name } });
     return org;
 }
 
-async function upsertProteins(accessions) {
-    // récupère celles manquantes via UniProt puis insère
-    const existing = await Protein.findAll({ where: { uniprot_acc: accessions } });
-    const have = new Set(existing.map(p => p.uniprot_acc));
+// Upsert proteins selon ton schéma (uniprot_id PK, taxon_id NOT NULL)
+async function upsertProteinsForTaxon(accessions, fallbackTaxonId) {
+    const existing = await Protein.findAll({ where: { uniprot_id: accessions } });
+    const have = new Set(existing.map(p => p.uniprot_id));
     const missing = accessions.filter(a => !have.has(a));
-
     if (missing.length === 0) return;
 
-    // Limite la concurrence pour rester sympa avec l’API UniProt
     const CHUNK = 5;
     for (let i = 0; i < missing.length; i += CHUNK) {
         const slice = missing.slice(i, i + CHUNK);
         const infos = await Promise.all(slice.map(acc => getProteinInfo(acc).catch(() => null)));
         const payload = infos.filter(Boolean).map(info => ({
-            uniprot_acc: info.accession,
-            gene_name: info.gene_name,
-            protein_name: info.protein_name,
-            length: info.length,
-            reviewed: !!info.reviewed,
-            organism_taxon_id: info.organism_taxon_id ?? null,
-            updated_at: new Date(),
+            uniprot_id:   info.uniprot_id,
+            taxon_id:     info.taxon_id || fallbackTaxonId, // NOT NULL
+            gene_name:    info.gene_name || null,
+            protein_name: info.protein_name || null,
+            sequence:     info.sequence || null,
+            length:       info.length || null,
+            go_terms:     info.go_terms || null,
+            updated_at:   new Date(),
         }));
-        if (payload.length) await Protein.bulkCreate(payload, { ignoreDuplicates: true });
+        if (payload.length) {
+            await Protein.bulkCreate(payload, { ignoreDuplicates: true });
+            // mets à jour les champs (au cas où déjà présents)
+            for (const p of payload) {
+                await Protein.update(
+                    {
+                        taxon_id:     p.taxon_id,
+                        gene_name:    p.gene_name,
+                        protein_name: p.protein_name,
+                        sequence:     p.sequence,
+                        length:       p.length,
+                        go_terms:     p.go_terms,
+                        updated_at:   new Date(),
+                    },
+                    { where: { uniprot_id: p.uniprot_id } }
+                );
+            }
+        }
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// 1) PREPARE: upload + détection organism/organelle + listing datasets existants
-// POST /uploads/prepare  (multipart form-data: file=CSV)
+// —— routes ——
+
+// 1) PREPARE: upload fichier + détection taxon + organelle
 router.post('/prepare', authRequired, upload.single('file'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: 'file requis' });
-        const filePath = req.file.path;
-        const file_sha256 = await sha256File(filePath);
 
-        // Renomme le fichier avec son hash (évite doublons)
+        const originalName = req.file.originalname;
+        const filePath = req.file.path;
+
+        // hash + nom canonique
+        const file_sha256 = await sha256File(filePath);
         const hashedPath = path.join(uploadDir, `${file_sha256}.csv`);
         if (!fs.existsSync(hashedPath)) fs.renameSync(filePath, hashedPath);
-        else fs.unlinkSync(filePath); // déjà présent
+        else fs.unlinkSync(filePath);
 
-        // Parse juste quelques lignes pour détecter 1er UniProt
-        const { rows, header } = await parseCsv(hashedPath, { maxRows: 5 });
-        if (!rows.length) return res.status(400).json({ error: 'CSV vide' });
+        // 👉 utilise TON parser (parse tout le fichier)
+        const rows = parseCsv(hashedPath);
+        if (!rows.length) return res.status(400).json({ error: 'CSV vide ou entêtes manquants' });
 
-        // Cherche un accession dans Protein1/2
-        const firstRow = rows.find(r => r.Protein1 || r.Protein2) || rows[0];
-        const acc = (firstRow.Protein1 || firstRow.Protein2 || '').toString().trim();
-        if (!acc) return res.status(400).json({ error: 'Aucun UniProt ID détecté (Protein1/Protein2)' });
+        // Ton parser garantit Protein1 (sinon la ligne est filtrée), Protein2 fallback = Protein1
+        const firstAcc = rows[0]?.Protein1?.toString().trim();
+        if (!firstAcc) return res.status(400).json({ error: 'Aucun UniProt ID détecté (Protein1)' });
 
         // Taxon via UniProt
-        const organism_taxon_id = await getTaxonIdFromAcc(acc);
+        const organism_taxon_id = await getTaxonIdFromAcc(firstAcc);
 
-        // Organisme: upsert minimal (nom si tu veux, ici on laisse null)
-        await Organism.findOrCreate({
-            where: { taxon_id: organism_taxon_id },
-            defaults: { taxon_id: organism_taxon_id, scientific_name: null, created_at: new Date() }
-        });
+        // Upsert minimal organism (pas de created_at dans ton modèle)
+        await Organism.findOrCreate({ where: { taxon_id: organism_taxon_id }, defaults: { taxon_id: organism_taxon_id } });
 
-        // Organelle via nom de fichier
-        const originalName = req.file.originalname;
-        const orgName = guessOrganelleNameFromFilename(originalName) || 'Unknown';
-        const organelle = await findOrCreateOrganelleByName(orgName);
+        // Organelle depuis le nom (gère "Cilia" et "allCell")
+        const organelleName = guessOrganelleNameFromFilename(originalName);
+        const organelle = await Organelle.findOrCreate({ where: { name: organelleName }, defaults: { name: organelleName } })
+            .then(([o]) => o);
 
-        // Datasets existants pour cet utilisateur / organism / organelle
+        // Datasets existants pour (user, organism, organelle)
         const existing = await Dataset.findAll({
-            where: {
-                user_id: req.user.id,
-                organism_taxon_id,
-                organelle_id: organelle.id
-            },
-            order: [['created_at','DESC']]
+            where: { user_id: req.user.id, organism_taxon_id, organelle_id: organelle.id },
+            order: [['created_at', 'DESC']]
         });
+
+        // Si tu veux afficher l’entête dans l’UI, on la déduit
+        const header = Object.keys(rows[0] || {});
 
         return res.json({
             analysis: {
@@ -114,7 +126,7 @@ router.post('/prepare', authRequired, upload.single('file'), async (req, res) =>
                 organelle: { id: organelle.id, name: organelle.name },
                 filename: originalName,
                 file_sha256,
-                header
+                header, // déduit
             },
             existingDatasets: existing.map(d => ({
                 id: d.id, filename: d.filename, rows_count: d.rows_count, status: d.status, created_at: d.created_at
@@ -126,28 +138,20 @@ router.post('/prepare', authRequired, upload.single('file'), async (req, res) =>
     }
 });
 
-// ─────────────────────────────────────────────────────────────
+
 // 2) COMMIT: créer un dataset ou compléter un dataset existant
-// POST /uploads/commit
-// Body JSON: {
-//   file_sha256, filename,
-//   organism_taxon_id, organelle_id,
-//   mode: 'create' | 'append',
-//   dataset_id?: number
-// }
 router.post('/commit', authRequired, async (req, res) => {
     try {
         const { file_sha256, filename, organism_taxon_id, organelle_id, mode, dataset_id } = req.body || {};
         if (!file_sha256 || !filename || !organism_taxon_id || !organelle_id || !mode) {
             return res.status(400).json({ error: 'Champs requis: file_sha256, filename, organism_taxon_id, organelle_id, mode' });
         }
+
         const csvPath = path.join(uploadDir, `${file_sha256}.csv`);
         if (!fs.existsSync(csvPath)) return res.status(400).json({ error: 'Fichier introuvable (ré-exécuter prepare)' });
 
-        const now = new Date();
-
-        // 2.a Créer dataset si demandé
-        let dataset = null;
+        // create / append
+        let dataset;
         if (mode === 'create') {
             dataset = await Dataset.create({
                 user_id: req.user.id,
@@ -157,13 +161,12 @@ router.post('/commit', authRequired, async (req, res) => {
                 file_sha256,
                 rows_count: 0,
                 status: 'uploaded',
-                created_at: now
+                created_at: new Date()
             });
         } else if (mode === 'append') {
             if (!dataset_id) return res.status(400).json({ error: 'dataset_id requis pour append' });
             dataset = await Dataset.findByPk(dataset_id);
             if (!dataset) return res.status(404).json({ error: 'Dataset introuvable' });
-            // Vérifie cohérence
             if (dataset.organism_taxon_id !== Number(organism_taxon_id) || dataset.organelle_id !== Number(organelle_id)) {
                 return res.status(400).json({ error: 'Dataset incompatible (organism/organelle différents)' });
             }
@@ -171,50 +174,53 @@ router.post('/commit', authRequired, async (req, res) => {
             return res.status(400).json({ error: 'mode invalide' });
         }
 
-        // 2.b Parse TOUT le CSV et prépare inserts
-        const { rows } = await parseCsv(csvPath);
-        if (!rows.length) return res.status(400).json({ error: 'CSV vide' });
+        // 👉 parse via TON parser
+        const rows = parseCsv(csvPath);
+        if (!rows.length) return res.status(400).json({ error: 'CSV vide ou entêtes manquants' });
 
-        // set d’accessions à upserter
+        // Accumule les accessions + crosslinks
         const accs = new Set();
         const payload = [];
+
         for (const r of rows) {
-            const p1 = (r.Protein1 || '').trim();
-            const p2 = (r.Protein2 || '').trim();
+            const p1 = (r.Protein1 || '').toString().trim();
+            const p2 = (r.Protein2 || '').toString().trim(); // déjà fallback dans ton parser
             if (!p1 || !p2) continue;
-            accs.add(p1);
-            accs.add(p2);
+
+            accs.add(p1); accs.add(p2);
+
             payload.push({
                 dataset_id: dataset.id,
                 protein1_uid: p1,
                 protein2_uid: p2,
-                abspos1: r.AbsPos1 ? Number(r.AbsPos1) : null,
-                abspos2: r.AbsPos2 ? Number(r.AbsPos2) : null,
-                score: (r.Score !== undefined && r.Score !== '') ? Number(r.Score) : null,
-                created_at: now
+                abspos1: Number.isFinite(r.AbsPos1) ? r.AbsPos1 : (r.AbsPos1 ? parseInt(r.AbsPos1, 10) : null),
+                abspos2: Number.isFinite(r.AbsPos2) ? r.AbsPos2 : (r.AbsPos2 ? parseInt(r.AbsPos2, 10) : null),
+                score: Number.isFinite(r.Score) ? r.Score : (r.Score !== undefined && r.Score !== '' ? parseFloat(r.Score) : null),
             });
         }
-        // 2.c Upsert protéines manquantes via UniProt
-        await upsertProteins([...accs]);
 
-        // 2.d Insert crosslinks
-        await Crosslink.bulkCreate(payload, { ignoreDuplicates: false });
+        // Upsert proteins manquantes (⚠️ Protein.taxon_id NOT NULL)
+        await upsertProteinsForTaxon([...accs], Number(organism_taxon_id));
 
-        // 2.e Met à jour le dataset
+        // Insert crosslinks (pas de created_at dans ton modèle)
+        if (payload.length) await Crosslink.bulkCreate(payload);
+
+        // MAJ dataset
         dataset.rows_count = (dataset.rows_count || 0) + payload.length;
-        dataset.status = dataset.status === 'uploaded' ? 'parsed' : dataset.status;
+        if (dataset.status === 'uploaded') dataset.status = 'parsed';
         await dataset.save({ silent: true });
 
         return res.json({
             ok: true,
             dataset: { id: dataset.id, rows_count: dataset.rows_count, status: dataset.status },
             inserted_crosslinks: payload.length,
-            inserted_proteins_checked: accs.size
+            checked_proteins: accs.size
         });
     } catch (e) {
         console.error('POST /uploads/commit ERROR:', e);
         return res.status(500).json({ error: 'Commit échoué' });
     }
 });
+
 
 export default router;

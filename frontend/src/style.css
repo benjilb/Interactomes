@@ -11,31 +11,26 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* layout */
+  --header-height: 64px;          /* adapte si besoin */
+  --page-max-width: 1280px;       /* largeur utile du contenu */
+  --page-padding: 16px;           /* padding horizontal */
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
+a { font-weight: 500; color: #646cff; text-decoration: inherit; }
+a:hover { color: #535bf2; }
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  /* IMPORTANT: ne pas centrer toute l'app */
+  display: block;                 /* ← était flex + place-items:center */
   overflow: auto;
-
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
+h1 { font-size: 3.2em; line-height: 1.1; }
 
 button {
   border-radius: 8px;
@@ -48,34 +43,46 @@ button {
   cursor: pointer;
   transition: border-color 0.25s;
 }
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
+button:hover { border-color: #646cff; }
+button:focus, button:focus-visible { outline: 4px auto -webkit-focus-ring-color; }
 
-.card {
-  padding: 2em;
-}
+.card { padding: 2em; }
 
+/* IMPORTANT: enlever le centrage global du template */
 #app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;                      /* ← plus de auto */
+  padding: 0;                     /* padding géré sur .app-main/.container */
+  text-align: initial;            /* ne pas forcer le centrage du texte */
 }
 
+/* Conteneur commun pour toutes les pages */
+.container {
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+  padding: 0 var(--page-padding);
+}
+
+/* Header fixé pleine largeur (au cas où) */
+.app-header-fixed {
+  position: sticky;               /* reste en haut, garde sa place dans le flux */
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 1000;
+}
+
+/* Zone contenu sous le header — même hauteur partout */
+.app-main {
+  min-height: calc(100vh - var(--header-height));
+  padding: var(--page-padding) 0; /* padding vertical global léger */
+}
+
+/* Thème clair */
 @media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+  :root { color: #213547; background-color: #ffffff; }
+  a:hover { color: #747bff; }
+  button { background-color: #f9f9f9; }
 }

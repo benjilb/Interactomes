@@ -1,4 +1,5 @@
 import { Protein } from '../models/index.js';
+import { Op } from 'sequelize';
 
 const UNIPROT_ENTRY = (acc) => `https://rest.uniprot.org/uniprotkb/${encodeURIComponent(acc)}.json`;
 
@@ -102,29 +103,40 @@ async function fetchUniProtEntry(uniprotId) {
 // src/services/proteinService.js
 export async function ensureProteinsForOrganism(uniprotIds, taxId, transaction = null) {
     if (!Number.isInteger(taxId)) throw new Error(`ensureProteinsForOrganism: invalid taxId "${taxId}"`);
+    const uniq = Array.from(new Set(uniprotIds.filter(Boolean).map(s => String(s).trim())));
 
-    const uniq = Array.from(new Set(uniprotIds.filter(u => !isBadAccession(u)).map(s => String(s).trim())));
-    for (const uid of uniq) {
-        await limit(async () => {
-            try {
-                const entry = await fetchUniProtEntry(uid);
-                const payload = mapEntryToProteinPayload(entry, taxId); // garde taxon_id = taxId
-                if (payload.source_tax_id && taxId !== payload.source_tax_id) {
-                    console.warn(`[proteinService] TaxID mismatch for ${uid}: dataset=${taxId} uniProt=${payload.source_tax_id}`);
-                }
-                await Protein.upsert(payload, { transaction });
-                console.log(`[proteinService] upsert OK: ${uid} (taxon=${taxId})`);
-            } catch (e) {
-                console.error(`[proteinService] Failed UniProt fetch/upsert for ${uid}: ${e.message}`);
-                // fallback minimal mais taxon non nul
-                const [row, created] = await Protein.findOrCreate({
-                    where: { uniprot_id: uid },
-                    defaults: { uniprot_id: uid, taxon_id: taxId },
-                    transaction
-                });
-                console.log(`[proteinService] ${created ? 'created' : 'exists'} minimal: ${uid} (taxon=${taxId})`);
-            }
-        });
+    // 1) déjà en DB ?
+    const existing = await Protein.findAll({
+        attributes: ['uniprot_id'],
+        where: { uniprot_id: { [Op.in]: uniq } },
+        transaction
+    });
+    const have = new Set(existing.map(x => x.uniprot_id));
+    const missing = uniq.filter(u => !have.has(u));
+
+    // log les hits
+    if (have.size) {
+        console.log(`[proteinService] déjà en DB: ${have.size}/${uniq.length}`);
+        // si tu veux loguer les 30 premiers:
+        // console.log('  ex:', Array.from(have).slice(0,30).join(', '));
+    }
+
+    // 2) fetch UniProt seulement pour les manquantes
+    for (const uid of missing) {
+        try {
+            const entry = await fetchUniProtEntry(uid);
+            const payload = mapEntryToProteinPayload(entry, taxId);
+            await Protein.upsert(payload, { transaction });
+            console.log(`[proteinService] upsert OK: ${uid}`);
+        } catch (e) {
+            console.error(`[proteinService] fetch/upsert KO ${uid}: ${e.message}`);
+            const [row, created] = await Protein.findOrCreate({
+                where: { uniprot_id: uid },
+                defaults: { uniprot_id: uid, taxon_id: taxId },
+                transaction
+            });
+            console.log(`[proteinService] ${created ? 'created' : 'exists'} minimal: ${uid}`);
+        }
     }
 }
 

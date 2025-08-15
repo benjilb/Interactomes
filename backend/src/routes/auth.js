@@ -2,33 +2,44 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
-import { authRequired } from '../middleware/auth.js';
 
 const router = express.Router();
 
-function signToken(user) {
-    return jwt.sign(
-        { id: user.id, email: user.email },
-        process.env.JWT_SECRET,
-        { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-    );
+function signToken(u) {
+    if (!process.env.JWT_SECRET) {
+        throw new Error('JWT_SECRET manquant');
+    }
+    return jwt.sign({ id: u.id, email: u.email }, process.env.JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+    });
 }
 
 // POST /auth/register
 router.post('/register', async (req, res) => {
     try {
-        const { firstName, lastName, email, password } = req.body || {};
-        if (!firstName || !lastName || !email || !password) {
+        const { email, first_name, last_name, password } = req.body || {};
+        if (!email || !first_name || !last_name || !password) {
             return res.status(400).json({ error: 'Champs requis manquants' });
         }
-        const exists = await User.findOne({ where: { email } });
-        if (exists) return res.status(409).json({ error: 'Email déjà utilisé' });
+        const exist = await User.findOne({ where: { email } });
+        if (exist) return res.status(409).json({ error: 'Email déjà utilisé' });
 
-        const passwordHash = await bcrypt.hash(password, 12);
-        const user = await User.create({ firstName, lastName, email, passwordHash });
+        const password_hash = await bcrypt.hash(password, 12);
+        const user = await User.create({
+            email, first_name, last_name, password_hash,
+            created_at: new Date(), updated_at: new Date()
+        });
+
         const token = signToken(user);
-        return res.status(201).json({ token, user: { id: user.id, firstName, lastName, email } });
+        res.status(201).json({
+            token,
+            user: {
+                id: user.id, email, first_name, last_name,
+                created_at: user.created_at
+            }
+        });
     } catch (e) {
+        console.error('POST /auth/register ERROR:', e);
         return res.status(500).json({ error: 'Erreur serveur' });
     }
 });
@@ -37,23 +48,57 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body || {};
+
+
+        // 1) Validation stricte du body
+        if (typeof email !== 'string' || typeof password !== 'string' ||
+            email.trim() === '' || password === '') {
+            return res.status(400).json({ error: 'email et password sont requis' });
+        }
+
         const user = await User.findOne({ where: { email } });
         if (!user) return res.status(401).json({ error: 'Identifiants invalides' });
 
-        const ok = await bcrypt.compare(password, user.passwordHash);
+        const ok = await bcrypt.compare(password, user.password_hash);
         if (!ok) return res.status(401).json({ error: 'Identifiants invalides' });
 
+        // 4) Signe le token uniquement si SECRET est là
+        if (!process.env.JWT_SECRET) {
+            console.error('JWT_SECRET manquant');
+            return res.status(500).json({ error: 'Mauvaise configuration serveur' });
+        }
+
         const token = signToken(user);
-        return res.json({ token, user: { id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email } });
-    } catch (e) {
+        res.json({
+            token,
+            user: {
+                id: user.id,
+                email: user.email,
+                first_name: user.first_name,
+                last_name: user.last_name
+            }
+        });
+    } catch {
+        console.error('POST /auth/login ERROR:', e);
         return res.status(500).json({ error: 'Erreur serveur' });
     }
 });
 
 // GET /auth/me
-router.get('/me', authRequired, async (req, res) => {
-    const user = await User.findByPk(req.user.id, { attributes: ['id','firstName','lastName','email','createdAt'] });
-    return res.json({ user });
+router.get('/me', async (req, res) => {
+    try {
+        const hdr = req.headers.authorization || '';
+        const token = hdr.startsWith('Bearer ') ? hdr.slice(7) : null;
+        if (!token) return res.status(401).json({ error: 'Token manquant' });
+        const p = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findByPk(p.id, {
+            attributes: ['id', 'email', 'first_name', 'last_name', 'created_at']
+        });
+        if (!user) return res.status(404).json({ error: 'Introuvable' });
+        res.json({ user });
+    } catch {
+        res.status(401).json({ error: 'Token invalide' });
+    }
 });
 
 export default router;
