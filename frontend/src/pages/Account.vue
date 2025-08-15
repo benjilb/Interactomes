@@ -19,7 +19,7 @@
 
 <script setup>
 import { onMounted } from 'vue';
-import { useAuth, me } from '../services/auth';
+import { useAuth, me } from '../services/auth.js';
 
 const { user, loading } = useAuth();
 
