@@ -1,17 +1,24 @@
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+// src/store/dataStore.js
+import { defineStore } from 'pinia';
+import { fetchDatasetGraph } from '@/services/datasets';
 
-export const useDataStore = defineStore('data', () => {
-    const fastaData = ref([])
-    const csvData = ref([])
+export const useDataStore = defineStore('data', {
+    state: () => ({
+        fastaData: [], // protéines
+        csvData:   [], // crosslinks
+    }),
+    actions: {
+        async loadDataset(datasetId) {
+            const { proteins, crosslinks } = await fetchDatasetGraph(datasetId);
 
-    const isFastaLoaded = computed(() => fastaData.value.length > 0)
-    const isCsvLoaded = computed(() => csvData.value.length > 0)
-
-    return {
-        fastaData,
-        csvData,
-        isFastaLoaded,
-        isCsvLoaded
+            // On alimente tes structures EXACTES
+            this.fastaData = proteins;                 // [{ uniprot_id, gene_name, protein_name, sequence, ... }]
+            this.csvData   = crosslinks;               // [{ Protein1, Protein2, AbsPos1, AbsPos2, Score }]
+        },
+        clear() {
+            this.fastaData = [];
+            this.csvData = [];
+        }
     }
-})
+});
+

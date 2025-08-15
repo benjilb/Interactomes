@@ -28,7 +28,6 @@
     <div class="button-section">
       <button :disabled="!canGenerate" @click="generateGraph">Generate Graph</button>
 
-
       <button @click="generateGraphTest">Generate Graph Test</button>
 
     </div>
@@ -42,7 +41,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useDataStore } from '@/store/dataStore'
-import GraphView from "@/components/GraphView.vue";
+import GraphView from "@/pages/GraphView.vue";
 import { parseCsv } from '@/utils/CsvParser'
 import { parseFasta } from '@/utils/FastaParser'
 

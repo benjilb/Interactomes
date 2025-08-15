@@ -11,8 +11,6 @@
       <nav class="main-nav" aria-label="Navigation principale">
         <RouterLink to="/" class="nav-link">Accueil</RouterLink>
         <RouterLink to="/datasets" class="nav-link">Datasets</RouterLink>
-        <RouterLink to="/viewer" class="nav-link">Visualiser</RouterLink>
-        <RouterLink to="/about" class="nav-link">À propos</RouterLink>
       </nav>
     </div>
     <RouterLink v-if="isLoggedIn" to="/upload" class="cta">
@@ -174,4 +172,8 @@ function fullName(u){
   .title { display: none; }
   .main-nav { display: none; }
 }
+/*
+
+<RouterLink to="/viewer" class="nav-link">Visualiser</RouterLink>
+<RouterLink to="/about" class="nav-link">À propos</RouterLink>*/
 </style>

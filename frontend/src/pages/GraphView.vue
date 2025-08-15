@@ -37,7 +37,8 @@
 
 <script setup>
 import {ref,onMounted, watch, onBeforeUnmount, nextTick} from 'vue'
-import { useDataStore } from '@/store/dataStore'
+import { useDataStore } from '@/store/dataStore.js'
+import { useRoute } from 'vue-router'
 import cytoscape from 'cytoscape';
 import coseBilkent from 'cytoscape-cose-bilkent';
 import CrosslinkTable from '@/components/CrosslinkTable.vue';
@@ -51,6 +52,10 @@ const props = defineProps({
     default: 0
   }
 })
+
+const route = useRoute();
+const datasetId = ref(Number(route.params.datasetId)); // ou passer en prop si tu préfères
+
 // References
 const cyContainer = ref(null);
 let cy = null;
@@ -1215,6 +1220,9 @@ const handleResize = () => {
 
 // ===== Lifecycle =====
 onMounted(async () => {
+  if (Number.isFinite(datasetId.value)) {
+    await store.loadDataset(datasetId.value);
+  }
   await generateGraph();
   window.addEventListener('resize', handleResize);
   if (cy) {

@@ -27,7 +27,10 @@ const routes = [
         beforeEnter: requireAuth
     },
     // src/router/index.js
-    { path: '/graph/:datasetId', name: 'graph', component: () => import('../pages/GraphView.vue') }
+    { path: '/graph/:datasetId', name: 'graph', component: () => import('../pages/GraphView.vue') },
+    // src/router/index.js
+    { path: '/datasets', name: 'datasetsDirectory', component: () => import('../pages/DatasetsView.vue') }
+
 ]
 
 const router = createRouter({

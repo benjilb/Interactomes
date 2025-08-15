@@ -16,10 +16,12 @@ process.on('uncaughtException', (e) => console.error('UNCAUGHT EXCEPTION', e));
 
 // 🔎 Log chaque requête pour savoir si on arrive au serveur
 app.use((req, res, next) => {
-    console.log(`[REQ] ${req.method} ${req.url}`);
+    const t0 = Date.now();
+    res.on('finish', () => {
+        console.log(`[${res.statusCode}] ${req.method} ${req.originalUrl} ${Date.now()-t0}ms`);
+    });
     next();
 });
-
 // ⚠️ NE PAS mettre CORS, static, ni DB ici pour l’instant.
 // ⚠️ NE PAS importer vos routes ici pour l’instant.
 const RAW_ORIGIN = process.env.URL || 'http://localhost:5173';
@@ -46,16 +48,15 @@ app.use((req, res, next) => {
     next();
 });
 
-
+// ── Middlewares
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 import './database/initDB.js';
-
-app.use('/uploads', uploadsRoutes);
-
+import './models/index.js';
 
 app.use('/auth', authRoutes);
+app.use('/uploads', uploadsRoutes);
 app.use('/datasets', datasetsRoutes);
 app.use('/', crosslinksRoutes);
 
