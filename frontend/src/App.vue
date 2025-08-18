@@ -10,8 +10,8 @@
       @logout="doLogout"
   />
 
-  <main class="app-main">
-    <div class="container">
+  <main class="app-main" :class="{ 'no-gutters': isGraph }">
+    <div class="container" :class="{ 'no-gutters': isGraph }">
       <RouterView />
     </div>
   </main>
@@ -21,13 +21,19 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import {computed, ref} from 'vue'
+import {useRoute, useRouter} from 'vue-router'
 import Header from './components/Header.vue'
 import LoginModal from './components/Auth/LoginModal.vue'
 import RegisterModal from './components/Auth/RegisterModal.vue'
 
+const route = useRoute()
 const router = useRouter()
+
+
+const isGraph = computed(() => route.name === 'graph')
+
+
 const showLogin = ref(false)
 const showRegister = ref(false)
 
