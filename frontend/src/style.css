@@ -86,3 +86,14 @@ button:focus, button:focus-visible { outline: 4px auto -webkit-focus-ring-color;
   a:hover { color: #747bff; }
   button { background-color: #f9f9f9; }
 }
+/* sécurité : pas de marge navigateur */
+html, body { margin: 0; }
+
+/* sur la page graph, pas de max-width ni de padding pour le container */
+.app-main.no-gutters,
+.app-main.no-gutters .container {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  max-width: none !important;
+  width: 100% !important;
+}
