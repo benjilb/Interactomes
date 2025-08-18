@@ -1,21 +1,35 @@
 <template>
-  <input
-      v-model="searchQuery"
-      type="text"
-      placeholder="search for a gene name, protein name, uniprot ID, sequence..."
-      class="search-input"
-  />
-  <label>
-    <input type="checkbox" v-model="showSelfLinks" />
-    Self-Links
-  </label>
+  <div class="graph-toolbar">
+    <div class="graph-toolbar-inner">
+      <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="search for a gene name, protein name, uniprot ID, sequence..."
+          class="search-input"
+          aria-label="Search proteins"
+      />
+      <label class="selflinks">
+        <input type="checkbox" v-model="showSelfLinks" />
+        Self-Links
+      </label>
+    </div>
+  </div>
+
   <div class="graph-page">
     <div class="protein-info-container">
       <ProteinInfo :protein="selectedProtein" />
     </div>
 
     <div class="graph-container">
-      <h3>Crosslink Graph</h3>
+      <div class="graph-header">
+        <h3>Crosslink Graph</h3>
+        <div class="organism-line">
+          <span v-if="organismName && organismName.length">{{ organismName }}</span>
+          <span v-if="organismTaxon">&nbsp;(taxon {{ organismTaxon }})</span>
+        </div>
+      </div>
+
+
 
       <div id="cytoscape-wrapper">
         <div ref="cyContainer" class="cytoscape cytoscape-graph"></div>
@@ -36,13 +50,14 @@
 </template>
 
 <script setup>
-import {ref,onMounted, watch, onBeforeUnmount, nextTick} from 'vue'
+import {ref, onMounted, watch, onBeforeUnmount, nextTick, computed} from 'vue'
 import { useDataStore } from '@/store/dataStore.js'
 import { useRoute } from 'vue-router'
 import cytoscape from 'cytoscape';
 import coseBilkent from 'cytoscape-cose-bilkent';
 import CrosslinkTable from '@/components/CrosslinkTable.vue';
 import ProteinInfo from '@/components/ProteinInfo.vue'
+import {fetchDatasetMeta} from "@/services/datasets.js";
 
 cytoscape.use(coseBilkent);
 
@@ -54,9 +69,16 @@ const props = defineProps({
 })
 
 const route = useRoute();
-const datasetId = ref(Number(route.params.datasetId)); // ou passer en prop si tu préfères
+const datasetId = ref(Number(route.params.datasetId));
 
 // References
+const organismName = ref('');
+const organismTaxon = ref(null);
+const organismDisplay = computed(() => {
+  if (organismName.value && organismTaxon.value) return `${organismName.value} (taxon ${organismTaxon.value})`;
+  if (organismTaxon.value) return `taxon ${organismTaxon.value}`;
+  return '';
+});
 const cyContainer = ref(null);
 let cy = null;
 
@@ -121,6 +143,8 @@ function recreateGlobalEdges() {
 
   cy.add(edges);
 }
+
+//focntion pour les noeuds en bas a droite
 function repositionIsolatedNodes(radius = 300) {
   const connectedNodes = cy.nodes().filter(n => {
     const edges = n.connectedEdges().filter(e => e.style('display') !== 'none');
@@ -1223,6 +1247,12 @@ onMounted(async () => {
   if (Number.isFinite(datasetId.value)) {
     await store.loadDataset(datasetId.value);
   }
+  try {
+    const meta = await fetchDatasetMeta(datasetId.value);
+    organismTaxon.value = meta?.organism?.taxon_id ?? null;
+    organismName.value  = meta?.organism?.name || meta?.organism?.common_name || '';
+  } catch {}
+
   await generateGraph();
   window.addEventListener('resize', handleResize);
   if (cy) {
@@ -1251,63 +1281,166 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
 });
 
-
+watch(() => route.params.datasetId, async (newVal) => {
+  const id = Number(newVal);
+  if (!Number.isFinite(id)) return;
+  datasetId.value = id;
+  try {
+    const meta = await fetchDatasetMeta(id);
+    organismTaxon.value = meta?.organism?.taxon_id ?? null;
+    organismName.value  = meta?.organism?.name || meta?.organism?.common_name || '';
+  } catch {}
+  await generateGraph();
+});
 </script>
 
 <style scoped >
+
+/* 3 colonnes en flex, le centre doit grandir */
 .graph-page {
   display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
-  width: 100vw;
-  height: 90vh;
+  align-items: stretch;
+  gap: 16px;
+  width: 100%;                 /* surtout pas 100vw */
+  height: calc(100vh - 120px); /* ajuste selon la hauteur de ta navbar */
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-.graph-container {
-  flex: 1 1 auto;
+/* Gauche : ProteinInfo — peut rétrécir si manque de place */
+.protein-info-container {
+  order: 1;
+  flex: 1 1 300px;             /* ⬅️ shrink/expand autorisés, base 300px */
+  min-width: 260px;
+  max-width: 380px;
   height: 100%;
-  overflow: hidden;
-  padding: 1rem;
+  overflow-y: auto;
   box-sizing: border-box;
+  margin: 0;
+  padding: 0.25rem 0.5rem 0.25rem 0;
+}
+
+/* Centre : Graphe — récupère la majorité de l'espace */
+.graph-container {
+  order: 2;
+  flex: 2 1 0;                 /* ⬅️ ratio 2 pour que le centre soit plus large */
+  min-width: 600px;            /* évite qu'il devienne trop étroit */
+  height: 100%;
   display: flex;
   flex-direction: column;
-}
-
-
-
-.protein-info-container,
-.crosslink-table-container{
-  width: 20%;
-  min-width: 220px;
-  max-width: 400px;
-  height: 100%;
-  padding: 0.1rem;
+  overflow: hidden;
   box-sizing: border-box;
-  margin-top: 40px;
-  overflow-y: auto;
-
+  padding: 0.25rem 0.5rem;
 }
 
+/* Zone Cytoscape full-size */
+#cytoscape-wrapper { position: relative; width: 100%; height: 100%; }
+.cytoscape-graph   { width: 100%; height: 100%; border: 3px solid #ccc; transform-style: preserve-3d; }
+.cytoscape-graph canvas { left: 0 !important; }
 
-.cytoscape-graph {
-  flex: 1 1 auto;
+/* Droite : CrosslinkTable — visible en entier si possible, scroll sinon */
+.crosslink-table-container {
+  order: 3;
+  flex: 1 1 340px;             /* ⬅️ shrink/expand autorisés, base 340px */
+  min-width: 300px;
+  max-width: 460px;
   height: 100%;
+  overflow: auto;              /* scroll vertical ET horizontal si nécessaire */
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.25rem 0 0.25rem 0.5rem;
+}
+
+/* Si ton tableau est étroit, force un min-width pour voir toutes les colonnes */
+.crosslink-table-container table {
   width: 100%;
-  border: 3px solid #ccc;
-  transform-style: preserve-3d;
+  min-width: 520px;            /* ajuste selon tes colonnes */
+  table-layout: auto;
 }
 
-.cytoscape-graph canvas {
-  left: 0 !important;
+/* Responsive : sous 1200px on empile pour ne rien couper */
+@media (max-width: 1200px) {
+  .graph-page { flex-direction: column; height: auto; }
+  .protein-info-container,
+  .crosslink-table-container { flex: 0 0 auto; width: 100%; max-width: none; }
+  .graph-container { min-width: 0; height: 70vh; }
 }
 
-#cytoscape-wrapper {
-  position: relative;
-  width: 100%;
-  height: 100%;
+/* (optionnel) sur très grands écrans, donne encore plus au graphe */
+@media (min-width: 1600px) {
+  .graph-container { flex: 3 1 0; }
+}
+
+/* Barre contenant search + checkbox */
+.graph-toolbar {
+  /* centre le contenu mais autorise un défilement horizontal si trop large */
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 0;                 /* petit respiro vertical */
+  text-align: center;             /* centre le bloc inner */
+}
+
+.graph-toolbar-inner {
+  display: inline-flex;           /* permet le centrage via text-align */
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;            /* empêche le retour à la ligne */
+  width: max-content;             /* s’étire à la taille du contenu => scroll si nécessaire */
+  padding: 0 8px;                 /* petite gouttière pour le scroll */
+}
+
+/* Input de recherche : largeur “confort” fixe => déclenche le scroll en manque de place */
+.search-input {
+  flex: 0 0 560px;                /* largeur fixe (ajuste : 520/560/600) */
+  height: 41px;
+  box-sizing: border-box;
+  padding: 10px 20px;
+  font-size: 16px;
+  border: 2px solid #ccc;
+  border-radius: 30px;
+  background-color: #424242;
+  outline: none;
+  transition: border-color .3s, box-shadow .3s;
+  margin: 0;                      /* ancien centrage auto supprimé */
+}
+
+/* Focus */
+.search-input:focus {
+  border-color: #4CAF50;
+  box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
+}
+.search-input::placeholder {
+  color: #aaa;
+  font-style: italic;
+}
+
+/* Checkbox + label */
+.selflinks {
+  flex: 0 0 auto;                 /* ne rétrécit pas */
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+  cursor: pointer;
 }
 
 
+/* titre + ligne organisme centrés (si utilisés) */
+.graph-header { text-align: center; margin-bottom: 6px; }
+.graph-header h3 { margin: 0; }
+.organism-line { color: #ccc; font-size: .95rem; margin-top: 4px; }
+
+
+.organism-line {
+  color: #ccc;
+  font-size: 0.95rem;
+  margin-top: 4px;
+}
+
+/* Compteur */
 .total-crosslinks {
   margin-top: 10px;
   font-weight: bold;
@@ -1316,28 +1449,5 @@ onBeforeUnmount(() => {
 }
 
 
-.search-input {
-  height: 41px;
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 500px; /* Limite la largeur de la barre de recherche */
-  padding: 10px 20px; /* Espacement interne pour rendre le texte plus lisible */
-  font-size: 16px; /* Taille du texte */
-  border: 2px solid #ccc; /* Bordure grise */
-  border-radius: 30px; /* Coins arrondis */
-  background-color: #424242; /* Couleur de fond claire */
-  transition: border-color 0.3s ease, box-shadow 0.3s ease; /* Effet de transition pour les changements */
-  outline: none; /* Enlève l'effet de contour par défaut */
-}
-
-.search-input:focus {
-  border-color: #4CAF50; /* Bordure verte quand l'input est sélectionné */
-  box-shadow: 0 0 8px rgba(76, 175, 80, 0.4); /* Ombre autour de l'input */
-}
-
-.search-input::placeholder {
-  color: #aaa; /* Couleur du texte de placeholder */
-  font-style: italic; /* Style en italique */
-}
 
 </style>
