@@ -221,8 +221,11 @@ router.get('/:id/graph', async (req, res) => {
         const ids = [...set];
         const proteins = ids.length
             ? await Protein.findAll({
-                where: { uniprot_id: ids },
-                attributes: ['uniprot_id','gene_name','protein_name','sequence','length','taxon_id','updated_at']
+                where: { uniprot_id: { [Op.in]: ids } },
+                attributes: [
+                    'uniprot_id','taxon_id','gene_name','protein_name',
+                    'sequence','length','go_terms','updated_at'
+                ]
             })
             : [];
 
@@ -238,11 +241,12 @@ router.get('/:id/graph', async (req, res) => {
         // fastaData = la “liste protéines” de ton front
         const fastaData = proteins.map(p => ({
             uniprot_id:   p.uniprot_id,
+            taxon_id:     p.taxon_id,
             gene_name:    p.gene_name,
             protein_name: p.protein_name,
             sequence:     p.sequence,
             length:       p.length,
-            taxon_id:     p.taxon_id,
+            go_terms:     p.go_terms,
             updated_at:   p.updated_at
         }));
 
@@ -265,10 +269,25 @@ router.get('/:id/graph', async (req, res) => {
     }
 });
 
+// GET /datasets/:id/meta  -> renvoie organism name + taxon
+router.get('/:id/meta', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Bad dataset id' });
+    const row = await Dataset.findByPk(id, {
+        include: [{ model: Organism, as: 'organism', attributes: ['taxon_id','name','common_name'] }],
+        attributes: ['id','filename','organism_taxon_id']
+    });
+    if (!row) return res.status(404).json({ error: 'Dataset not found' });
 
-
-
-
-
+    return res.json({
+        id: row.id,
+        filename: row.filename,
+        organism: row.organism ? {
+            taxon_id: row.organism.taxon_id,
+            name: row.organism.name,
+            common_name: row.organism.common_name
+        } : { taxon_id: row.organism_taxon_id, name: null, common_name: null }
+    });
+});
 
 export default router;
