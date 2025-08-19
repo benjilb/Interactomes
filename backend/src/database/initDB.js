@@ -6,6 +6,7 @@ const wait = (ms)=>new Promise(r=>setTimeout(r,ms));
     for (let i=1;i<=20;i++){
         try {
             console.log('Connecting to the database...');
+            console.log('🌱 ENV:', process.env.DB_NAME, process.env.DB_USER, process.env.DB_PASSWORD);
             await sequelize.authenticate();
             console.log('✅ DB connected');
             await sequelize.sync({ alter: true });
