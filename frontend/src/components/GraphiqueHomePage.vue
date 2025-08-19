@@ -1,49 +1,151 @@
 <template>
-  <div ref="graphContainer" class="graph-container"></div>
+  <nav class="organism-navbar">
+    <button
+        v-for="org in organisms"
+        :key="org.name"
+        @click="loadOrganismGraph(org)"
+        :class="{ active: selectedOrganism?.name === org.name }"
+    >
+      {{ org.short }}
+    </button>
+  </nav>
+
+  <div class="graph-container" ref="graphContainer">
+    <button class="toggle-labels-btn" @click="showLabels = !showLabels">
+      {{ showLabels ? 'Masquer les noms' : 'Afficher les noms' }}
+    </button>
+  </div>
 </template>
-
 <script setup>
-
 import * as d3 from 'd3'
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 
 const graphContainer = ref(null)
+const showLabels = ref(false)
+const selectedOrganism = ref(null)
+const organisms = [
+  { name: 'Cyanophora paradoxa', taxon: 2762, short: 'Cyanophora' },
+  { name: 'Chlamydomonas reinhardtii', taxon: 3055, short: 'Chlamy' },
+  { name: 'Sus scrofa', taxon: 9823, short: 'Pig' },
+  { name: 'Bos taurus', taxon: 9913, short: 'Cow' },
+  { name: 'Brassica oleracea var. oleracea', taxon: 109376, short: 'Cauliflower' },
+  { name: 'Tetrahymena thermophila (strain SB210)', taxon: 312017, short: 'Tetrahymena' }
+]
 
-
+const clusterColors = d3.schemeCategory10  // jusqu'à 10 clusters — peut être étendu plus tard
+const nodeMap = new Map()
+let svg = null, zoomGroup = null, simulation = null
 onMounted(async () => {
+  loadOrganismGraph(organisms[0])
+
+
+})
+async function loadOrganismGraph(org) {
+  selectedOrganism.value = org
+  nodeMap.clear()
+  d3.select(graphContainer.value).selectAll('*').remove()
+
   const nodes = []
   const links = []
-  const nodeMap = new Map()
   let counter = 0
 
-  const response = await fetch('http://localhost:3001/api/crosslinks')
-  const parsed = await response.json()
+  // ⬇️ 1. Récupère le dataset Cyanophora de user 1
+  const response = await fetch('http://localhost:3001/datasets?user_id=1')
+  const { items: datasets } = await response.json()
 
-  parsed.forEach(row => {
-    const sourceId = `cyano-${row.Protein1}-${row.AbsPos1}`
-    const targetId = `cyano-${row.Protein2}-${row.AbsPos2}`
+  const targetDataset = datasets.find(d => d.organism_taxon_id === org.taxon)
 
-    if (!nodeMap.has(sourceId)) {
-      nodeMap.set(sourceId, { id: sourceId, cluster: 'cyano', index: counter++ })
-      nodes.push(nodeMap.get(sourceId))
+  if (!targetDataset) {
+    console.warn('Dataset non trouvé')
+    return
+  }
+
+  // ⬇️ 2. Récupère tous les crosslinks pour ce dataset
+  const res = await fetch(`http://localhost:3001/datasets/${targetDataset.id}/crosslinks/withoutintracrosslink?limit=40000`);
+
+  const {items} = await res.json()
+  console.log(items);
+  // ⬇️ 3. Crée les nœuds uniques et les liens
+  items.forEach(row => {
+    const p1 = row.protein1_uid
+    const p2 = row.protein2_uid || p1 // fallback si vide
+
+    if (!nodeMap.has(p1)) {
+      nodeMap.set(p1, {
+        id: p1,
+        label: p1,
+        cluster: 0,
+        organism: org.name,
+        index: counter++
+      })
+      nodes.push(nodeMap.get(p1))
     }
-    if (!nodeMap.has(targetId)) {
-      nodeMap.set(targetId, { id: targetId, cluster: 'cyano', index: counter++ })
-      nodes.push(nodeMap.get(targetId))
+
+    if (!nodeMap.has(p2)) {
+      nodeMap.set(p2, {
+        id: p2,
+        label: p2,
+        cluster: 0,
+        organism: org.name,
+        index: counter++
+      })
+      nodes.push(nodeMap.get(p2))
     }
 
     links.push({
-      source: nodeMap.get(sourceId),
-      target: nodeMap.get(targetId),
-      score: row.Score
+      source: nodeMap.get(p1),
+      target: nodeMap.get(p2),
+      score: row.score
     })
   })
+  console.log('Nodes:', nodes)
+  console.log('Links:', links)
+  // ⬇️ 4. Assigne des clusters locaux par composant connexe
+  assignLocalClusters(nodes, links)
 
-
-
+  // ⬇️ 5. Dessine le graphe
   drawGraph(nodes, links)
-})
+}
 
+// 🔷 Détection de clusters (composants connexes)
+function assignLocalClusters(nodes, links) {
+  const adjacency = new Map()
+  nodes.forEach(n => adjacency.set(n.id, []))
+  links.forEach(link => {
+    adjacency.get(link.source.id).push(link.target.id)
+    adjacency.get(link.target.id).push(link.source.id)
+  })
+
+  let clusterId = 0
+  const visited = new Set()
+
+  function bfs(startId) {
+    const queue = [startId]
+    visited.add(startId)
+
+    while (queue.length > 0) {
+      const current = queue.shift()
+      const node = nodes.find(n => n.id === current)
+      if (node) node.cluster = clusterId
+
+      for (const neighbor of adjacency.get(current)) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor)
+          queue.push(neighbor)
+        }
+      }
+    }
+  }
+
+  nodes.forEach(n => {
+    if (!visited.has(n.id)) {
+      bfs(n.id)
+      clusterId++
+    }
+  })
+}
+
+// 🔷 Affichage du graphe
 function drawGraph(nodes, links) {
   const width = graphContainer.value.clientWidth
   const height = graphContainer.value.clientHeight
@@ -52,44 +154,33 @@ function drawGraph(nodes, links) {
       .append('svg')
       .attr('width', width)
       .attr('height', height)
+      .style('background-color', '#000')
 
-  // Groupe pour tout le contenu zoomable
   const zoomGroup = svg.append('g')
 
-  // Zoom/pan
   svg.call(
       d3.zoom()
-          .scaleExtent([0.5, 5])
-          .on('zoom', ({ transform }) => {
-            zoomGroup.attr('transform', transform)
-          })
+          .scaleExtent([0.1, 5])
+          .on('zoom', ({ transform }) => zoomGroup.attr('transform', transform))
   )
 
-  // Ajoute les liens
   const link = zoomGroup.append('g')
       .attr('stroke', '#aaa')
-      .attr('stroke-opacity', 0.6)
+      .attr('stroke-opacity', 0.5)
       .selectAll('line')
       .data(links)
       .join('line')
 
-  link.style('opacity', 0)
-      .transition()
-      .duration(800)
-      .style('opacity', 0.6)
-
-
-  // Ajoute les nœuds avec drag
-  const node = zoomGroup.append('g')
+  const nodeGroup = zoomGroup.append('g')
       .selectAll('circle')
       .data(nodes)
       .join('circle')
-      .attr('r', 4)
-      .attr('fill', d => d.cluster === 'bovine' ? '#f88' : '#88f')
+      .attr('r', 3)
+      .attr('fill', d => clusterColors[d.cluster % clusterColors.length])
       .call(
           d3.drag()
               .on('start', (event, d) => {
-                if (!event.active) simulation.alphaTarget(1).restart()
+                if (!event.active) simulation.alphaTarget(0.3).restart()
                 d.fx = d.x
                 d.fy = d.y
               })
@@ -103,19 +194,31 @@ function drawGraph(nodes, links) {
                 d.fy = null
               })
       )
-  node.style('opacity', 0)
-      .transition()
-      .duration(800)
-      .style('opacity', 1)
-  // Force layout
+
+  const labels = zoomGroup.append('g')
+      .selectAll('text')
+      .data(nodes)
+      .join('text')
+      .text(d => d.label)
+      .attr('fill', '#4cf')
+      .attr('font-size', 10)
+      .attr('text-anchor', 'middle')
+      .style('pointer-events', 'none')
+      .style('opacity', showLabels.value ? 1 : 0)
+
+  watch(showLabels, value => {
+    labels.transition().duration(300).style('opacity', value ? 1 : 0)
+  })
+
   const simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).distance(20).strength(1.0))
+      .force('link', d3.forceLink(links).distance(20).strength(1))
       .force('charge', d3.forceManyBody().strength(-10))
-      .force('collide', d3.forceCollide(6))
-      .force('clusterX', d3.forceX(d => d.cluster === 'bovine' ? -150 : 150).strength(0.05))
-      .force('clusterY', d3.forceY(0).strength(0.05))
+      .force('collide', d3.forceCollide(8))
+      .force('x', d3.forceX(0).strength(0.05))
+      .force('y', d3.forceY(0).strength(0.05))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .alpha(1).restart()
+      .alpha(1)
+      .restart()
       .on('tick', () => {
         link
             .attr('x1', d => d.source.x)
@@ -123,18 +226,68 @@ function drawGraph(nodes, links) {
             .attr('x2', d => d.target.x)
             .attr('y2', d => d.target.y)
 
-        node
+        nodeGroup
             .attr('cx', d => d.x)
             .attr('cy', d => d.y)
+
+        labels
+            .attr('x', d => d.x)
+            .attr('y', d => d.y - 8)
       })
 }
-
 </script>
 
 <style scoped>
 .graph-container {
   width: 100vw;
-  height: 100vh;
+  height: calc(100vh - 110px);
+  margin-top: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.organism-navbar {
+  position: fixed;
+  top: 65px;
+  left: 0;
+  width: 100vw;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px;
+  background-color: #111;
+  z-index: 20;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+.organism-navbar button {
+  background: #222;
+  color: #4cf;
+  border: 1px solid #555;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.organism-navbar button.active {
+  background-color: #444;
+  color: #fff;
+}
+
+.toggle-labels-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background-color: #222;
+  color: #4cf;
+  border: 1px solid #555;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.toggle-labels-btn:hover {
+  background-color: #333;
 }
 </style>
-
