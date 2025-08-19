@@ -11,7 +11,7 @@ const router = express.Router();
  */
 router.get('/datasets/:datasetId/crosslinks', async (req, res) => {
     const dataset_id = req.params.datasetId;
-    const limit = Math.min(parseInt(req.query.limit || '200', 10), 2000);
+    const limit = Math.min(parseInt(req.query.limit || '200', 10), 40000);
     const offset = parseInt(req.query.offset || '0', 10);
 
     const { rows, count } = await Crosslink.findAndCountAll({
