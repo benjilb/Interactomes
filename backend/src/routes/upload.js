@@ -6,7 +6,7 @@ import path from 'path';
 import { sha256File } from '../utils/hashFile.js';
 import { parseCsv } from '../parsers/parseCsv.js';
 import { guessOrganelleNameFromFilename } from '../services/organelleName.js';
-import { getTaxonIdFromAcc, getProteinInfo } from '../services/uniprot.js';
+import {getTaxonIdFromAcc, getProteinInfo, getOrganismFromAcc} from '../services/uniprot.js';
 
 import { authRequired } from '../middleware/auth.js';
 import Dataset from '../models/Dataset.js';
@@ -27,12 +27,6 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // —— helpers ——
-
-// Organelles: crée/retourne par name (name peut être "Cilia" ou "allCell")
-async function findOrCreateOrganelleByName(name) {
-    const [org] = await Organelle.findOrCreate({ where: { name }, defaults: { name } });
-    return org;
-}
 
 // Upsert proteins selon ton schéma (uniprot_id PK, taxon_id NOT NULL)
 async function upsertProteinsForTaxon(accessions, fallbackTaxonId) {
@@ -81,8 +75,9 @@ async function upsertProteinsForTaxon(accessions, fallbackTaxonId) {
 // 1) PREPARE: upload fichier + détection taxon + organelle
 router.post('/prepare', authRequired, upload.single('file'), async (req, res) => {
     try {
+        if (!req.user?.id) return res.status(401).json({ error: 'Auth required' });
         if (!req.file) return res.status(400).json({ error: 'file requis' });
-
+        console.log("TEEEEEST")
         const originalName = req.file.originalname;
         const filePath = req.file.path;
 
@@ -100,12 +95,14 @@ router.post('/prepare', authRequired, upload.single('file'), async (req, res) =>
         const firstAcc = rows[0]?.Protein1?.toString().trim();
         if (!firstAcc) return res.status(400).json({ error: 'Aucun UniProt ID détecté (Protein1)' });
 
-        // Taxon via UniProt
-        const organism_taxon_id = await getTaxonIdFromAcc(firstAcc);
+        const { taxon_id: organism_taxon_id, scientific_name, common_name } =
+            await getOrganismFromAcc(firstAcc);
 
-        // Upsert minimal organism (pas de created_at dans ton modèle)
-        await Organism.findOrCreate({ where: { taxon_id: organism_taxon_id }, defaults: { taxon_id: organism_taxon_id } });
-
+// ✅ crée/retourne l’organisme avec "name" (NOT NULL)
+        await Organism.findOrCreate({
+            where:    { taxon_id: organism_taxon_id },
+            defaults: { taxon_id: organism_taxon_id, name: scientific_name, common_name }
+        });
         // Organelle depuis le nom (gère "Cilia" et "allCell")
         const organelleName = guessOrganelleNameFromFilename(originalName);
         const organelle = await Organelle.findOrCreate({ where: { name: organelleName }, defaults: { name: organelleName } })
@@ -134,7 +131,7 @@ router.post('/prepare', authRequired, upload.single('file'), async (req, res) =>
         });
     } catch (e) {
         console.error('POST /uploads/prepare ERROR:', e);
-        return res.status(500).json({ error: 'Analyse fichier échouée' });
+        return res.status(500).json({ error: 'Analyse fichier échouée', details: String(e.message || e) });
     }
 });
 
@@ -149,6 +146,16 @@ router.post('/commit', authRequired, async (req, res) => {
 
         const csvPath = path.join(uploadDir, `${file_sha256}.csv`);
         if (!fs.existsSync(csvPath)) return res.status(400).json({ error: 'Fichier introuvable (ré-exécuter prepare)' });
+
+
+        // 🔎 FK présentes ?
+        const [org, orga] = await Promise.all([
+            Organism.findByPk(Number(organism_taxon_id)),
+            Organelle.findByPk(Number(organelle_id))
+        ]);
+        if (!org)  return res.status(400).json({ error: `Organism taxon_id ${organism_taxon_id} introuvable (refaire /prepare)` });
+        if (!orga) return res.status(400).json({ error: `Organelle id ${organelle_id} introuvable (refaire /prepare)` });
+
 
         // create / append
         let dataset;
@@ -174,9 +181,14 @@ router.post('/commit', authRequired, async (req, res) => {
             return res.status(400).json({ error: 'mode invalide' });
         }
 
-        // 👉 parse via TON parser
-        const rows = parseCsv(csvPath);
-        if (!rows.length) return res.status(400).json({ error: 'CSV vide ou entêtes manquants' });
+        // 📥 parse CSV en sécurité
+        let rows;
+        try {
+            rows = parseCsv(csvPath);    // ta fonction
+        } catch (e) {
+            return res.status(400).json({ error: 'CSV invalide', details: String(e.message || e) });
+        }
+        if (!rows?.length) return res.status(400).json({ error: 'CSV vide' });
 
         // Accumule les accessions + crosslinks
         const accs = new Set();
@@ -185,7 +197,12 @@ router.post('/commit', authRequired, async (req, res) => {
         for (const r of rows) {
             const p1 = (r.Protein1 || '').toString().trim();
             const p2 = (r.Protein2 || '').toString().trim(); // déjà fallback dans ton parser
+            const a1 = Number.parseInt(r?.AbsPos1, 10);
+            const a2 = Number.parseInt(r?.AbsPos2, 10);
+            const score = r?.Score !== undefined && r?.Score !== '' ? Number.parseFloat(r.Score) : null;
+
             if (!p1 || !p2) continue;
+            if (!Number.isInteger(a1) || !Number.isInteger(a2)) continue;
 
             accs.add(p1); accs.add(p2);
 
@@ -193,12 +210,14 @@ router.post('/commit', authRequired, async (req, res) => {
                 dataset_id: dataset.id,
                 protein1_uid: p1,
                 protein2_uid: p2,
-                abspos1: Number.isFinite(r.AbsPos1) ? r.AbsPos1 : (r.AbsPos1 ? parseInt(r.AbsPos1, 10) : null),
-                abspos2: Number.isFinite(r.AbsPos2) ? r.AbsPos2 : (r.AbsPos2 ? parseInt(r.AbsPos2, 10) : null),
-                score: Number.isFinite(r.Score) ? r.Score : (r.Score !== undefined && r.Score !== '' ? parseFloat(r.Score) : null),
+                abspos1: a1,
+                abspos2: a2,
+                score: Number.isFinite(score) ? score : null,
             });
         }
-
+        if (!payload.length) {
+            return res.status(400).json({ error: 'Aucun crosslink valide (positions absentes ou non numériques)' });
+        }
         // Upsert proteins manquantes (⚠️ Protein.taxon_id NOT NULL)
         await upsertProteinsForTaxon([...accs], Number(organism_taxon_id));
 
@@ -218,8 +237,10 @@ router.post('/commit', authRequired, async (req, res) => {
         });
     } catch (e) {
         console.error('POST /uploads/commit ERROR:', e);
-        return res.status(500).json({ error: 'Commit échoué' });
-    }
+        return res.status(500).json({
+            error: 'Commit échoué',
+            details: e?.original?.sqlMessage || e?.message || String(e)
+        });    }
 });
 
 
