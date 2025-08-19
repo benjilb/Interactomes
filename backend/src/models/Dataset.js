@@ -16,7 +16,6 @@ const Dataset = sequelize.define('Dataset', {
     timestamps: false,
     indexes: [
         { fields: ['organism_taxon_id', 'organelle_id', 'user_id'] },
-        { unique: true, fields: ['user_id', 'filename'] } // uq_dataset_user_file
     ]
 });
 
