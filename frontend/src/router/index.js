@@ -26,10 +26,14 @@ const routes = [
         component: UploadPage,
         beforeEnter: requireAuth
     },
-    // src/router/index.js
-    { path: '/graph/:datasetId', name: 'graph', component: () => import('../pages/GraphView.vue') },
-    // src/router/index.js
-    { path: '/datasets', name: 'datasetsDirectory', component: () => import('../pages/DatasetsView.vue') }
+    { path: '/graph/:datasetId',
+        name: 'graph',
+        component: () => import('../pages/GraphView.vue')
+    },
+    { path: '/datasets',
+        name: 'datasetsDirectory',
+        component: () => import('../pages/DatasetsView.vue')
+    }
 
 ]
 
