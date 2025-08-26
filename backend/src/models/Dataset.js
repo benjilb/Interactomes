@@ -10,7 +10,9 @@ const Dataset = sequelize.define('Dataset', {
     file_sha256: { type: DataTypes.CHAR(64), allowNull: true },
     rows_count: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
     status: { type: DataTypes.ENUM('uploaded','parsed','validated','failed'), allowNull: false, defaultValue: 'uploaded' },
-    created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }
+    created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+    experiment:  { type: DataTypes.TEXT, allowNull: true },
+    description: { type: DataTypes.TEXT, allowNull: true },
 }, {
     tableName: 'datasets',
     timestamps: false,
