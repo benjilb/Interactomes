@@ -62,6 +62,8 @@ router.get('/mine', authRequired, async (req, res) => {
                 rows_count: d.rows_count,
                 status: d.status,
                 created_at: d.created_at,
+                experiment: d.experiment ?? null,
+                description: d.description ?? null,
                 organelle: { id: d.organelle_id, name: organelleMap[d.organelle_id]?.name ?? null },
                 organism:  {
                     taxon_id: d.organism_taxon_id,
@@ -224,7 +226,7 @@ router.get('/:id/graph', async (req, res) => {
                 where: { uniprot_id: { [Op.in]: ids } },
                 attributes: [
                     'uniprot_id','taxon_id','gene_name','protein_name',
-                    'sequence','length','go_terms','updated_at'
+                    'sequence','length','go_terms','subcellular_locations','string_refs','updated_at'
                 ]
             })
             : [];
@@ -247,6 +249,8 @@ router.get('/:id/graph', async (req, res) => {
             sequence:     p.sequence,
             length:       p.length,
             go_terms:     p.go_terms,
+            subcellular_locations: p.subcellular_locations,
+            string_refs:           p.string_refs,
             updated_at:   p.updated_at
         }));
 
