@@ -23,6 +23,13 @@ h1 {
   width: 100%;
   min-height: calc(100vh - var(--header-height)); /* cohérent avec les autres pages */
   box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: hidden;
+}
+
+
+:global(body) {
+  overflow: hidden;
 }
 
 </style>

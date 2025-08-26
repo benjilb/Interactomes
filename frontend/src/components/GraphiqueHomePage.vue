@@ -10,11 +10,12 @@
     </button>
   </nav>
 
-  <div class="graph-container" ref="graphContainer">
+  <div class="graph-container" ref="graphContainer"></div>
     <button class="toggle-labels-btn" @click="showLabels = !showLabels">
-      {{ showLabels ? 'Masquer les noms' : 'Afficher les noms' }}
+      {{ showLabels ? 'Hide names' : 'Show names' }}
     </button>
-  </div>
+
+
 </template>
 <script setup>
 import * as d3 from 'd3'
@@ -34,19 +35,14 @@ const organisms = [
 
 const clusterColors = d3.schemeCategory10  // jusqu'à 10 clusters — peut être étendu plus tard
 const nodeMap = new Map()
-let svg = null, zoomGroup = null, simulation = null
 onMounted(async () => {
-  loadOrganismGraph(organisms[0])
-
-
+  await loadOrganismGraph(organisms[0])
 })
 async function loadOrganismGraph(org) {
   selectedOrganism.value = org
   nodeMap.clear()
   d3.select(graphContainer.value).selectAll('*').remove()
 
-  const nodes = []
-  const links = []
   let counter = 0
 
   // ⬇️ 1. Récupère le dataset Cyanophora de user 1
@@ -61,14 +57,18 @@ async function loadOrganismGraph(org) {
   }
 
   // ⬇️ 2. Récupère tous les crosslinks pour ce dataset
-  const res = await fetch(`http://localhost:3001/datasets/${targetDataset.id}/crosslinks/withoutintracrosslink?limit=40000`);
+  const res = await fetch(`http://localhost:3001/datasets/${targetDataset.id}/crosslinks?limit=40000`)
 
   const {items} = await res.json()
   console.log(items);
+
+
+  const nodes = []
+  const links = []
   // ⬇️ 3. Crée les nœuds uniques et les liens
   items.forEach(row => {
     const p1 = row.protein1_uid
-    const p2 = row.protein2_uid || p1 // fallback si vide
+    const p2 = row.protein2_uid
 
     if (!nodeMap.has(p1)) {
       nodeMap.set(p1, {
@@ -239,26 +239,29 @@ function drawGraph(nodes, links) {
 
 <style scoped>
 .graph-container {
+  position: absolute;
+  top: 106px; /* 64px (header) + 42px (navbar incl. padding/margin) */
+  left: 0;
   width: 100vw;
-  height: calc(100vh - 110px);
-  margin-top: 0;
-  position: relative;
+  height: calc(100vh - 106px); /* prend tout l'espace restant */
   overflow: hidden;
 }
 
 .organism-navbar {
   position: fixed;
-  top: 65px;
+  top: 64px; /* collé juste sous le header */
   left: 0;
-  width: 100vw;
+  width: 100%;
   display: flex;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
+  background-color: #000;
   padding: 10px;
-  background-color: #111;
-  z-index: 20;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+  z-index: 10;
+  box-sizing: border-box;
 }
+
 .organism-navbar button {
   background: #222;
   color: #4cf;
@@ -272,10 +275,9 @@ function drawGraph(nodes, links) {
   background-color: #444;
   color: #fff;
 }
-
 .toggle-labels-btn {
-  position: absolute;
-  top: 12px;
+  position: fixed;
+  top: 180px;
   right: 12px;
   background-color: #222;
   color: #4cf;
@@ -284,10 +286,11 @@ function drawGraph(nodes, links) {
   border-radius: 4px;
   font-size: 13px;
   cursor: pointer;
-  z-index: 10;
+  z-index: 20;
 }
 
 .toggle-labels-btn:hover {
   background-color: #333;
 }
+
 </style>

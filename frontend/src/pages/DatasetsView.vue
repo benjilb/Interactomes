@@ -1,9 +1,9 @@
 <template>
   <div class="wrap">
-    <h2>Tous les datasets</h2>
+    <h2>All datasets</h2>
 
     <div class="topbar">
-      <input v-model="q" type="text" placeholder="Filtrer (nom, email, taxon, organelle, filename…)" />
+      <input v-model="q" type="text" placeholder="Filter by name, email, taxon, organelle, filename…" />
       <span class="muted">{{ flatCount }} dataset(s)</span>
     </div>
 

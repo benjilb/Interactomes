@@ -3,13 +3,13 @@
   <header class="app-header">
     <div class="header-left">
       <!-- LOGO = bouton Accueil -->
-      <RouterLink to="/" class="logo-link" aria-label="Aller à l’accueil">
+      <RouterLink to="/" class="logo-link" aria-label="Go to home page">
         <img src="@/assets/logo/websiteicon.png" alt="Logo Interactomes" class="logo" />
       </RouterLink>
       <h1 class="title">Interactomes</h1>
 
       <nav class="main-nav" aria-label="Navigation principale">
-        <RouterLink to="/" class="nav-link">Accueil</RouterLink>
+        <RouterLink to="/" class="nav-link">Home </RouterLink>
         <RouterLink to="/datasets" class="nav-link">Datasets</RouterLink>
       </nav>
     </div>
@@ -49,20 +49,20 @@
         <!-- Non connecté: ouvrir modales -->
         <template v-if="!isLoggedIn">
           <button role="menuitem" class="menu-item" @click="openLogin">
-            Se connecter
+            Log in
           </button>
           <button role="menuitem" class="menu-item primary" @click="openRegister">
-            Créer un compte
+            Create an account
           </button>
         </template>
 
         <!-- Connecté: profil + logout -->
         <template v-else>
           <button role="menuitem" class="menu-item" @click="goProfile">
-            Mon profil
+            My profile
           </button>
           <button role="menuitem" class="menu-item danger" @click="handleLogout">
-            Se déconnecter
+            Log out
           </button>
         </template>
       </div>

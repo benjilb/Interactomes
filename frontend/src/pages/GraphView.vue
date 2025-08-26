@@ -24,12 +24,10 @@
       <div class="graph-header">
         <h3>Crosslink Graph</h3>
         <div class="organism-line">
-          <span v-if="organismName && organismName.length">{{ organismName }}</span>
-          <span v-if="organismTaxon">&nbsp;(taxon {{ organismTaxon }})</span>
+          <span  v-if="organismName && organismName.length"> Organism name:{{ organismName }}</span>
+          <span v-if="organismTaxon">&nbsp; Taxonomy ID: {{ organismTaxon }}</span>
         </div>
       </div>
-
-
 
       <div id="cytoscape-wrapper">
         <div ref="cyContainer" class="cytoscape cytoscape-graph"></div>
@@ -44,9 +42,10 @@
           :crosslinks="selectedProteinCrosslinks"
           :selectedProtein="selectedProtein"
       />
+      <button class="export-btn" @click="exportSvg">Export to SVG</button>
+
     </div>
   </div>
-
 </template>
 
 <script setup>
@@ -58,7 +57,10 @@ import coseBilkent from 'cytoscape-cose-bilkent';
 import CrosslinkTable from '@/components/CrosslinkTable.vue';
 import ProteinInfo from '@/components/ProteinInfo.vue'
 import {fetchDatasetMeta} from "@/services/datasets.js";
+import cytoscapeSvg from 'cytoscape-svg';
 
+
+cytoscape.use(cytoscapeSvg);
 cytoscape.use(coseBilkent);
 
 const props = defineProps({
@@ -74,13 +76,32 @@ const datasetId = ref(Number(route.params.datasetId));
 // References
 const organismName = ref('');
 const organismTaxon = ref(null);
-const organismDisplay = computed(() => {
-  if (organismName.value && organismTaxon.value) return `${organismName.value} (taxon ${organismTaxon.value})`;
-  if (organismTaxon.value) return `taxon ${organismTaxon.value}`;
-  return '';
-});
 const cyContainer = ref(null);
 let cy = null;
+
+function downloadTextFile (text, filename, mime = 'image/svg+xml;charset=utf-8') {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  URL.revokeObjectURL(url);
+  a.remove();
+}
+
+function exportSvg () {
+  if (!cy) return;
+  const svgStr = cy.svg({
+    full: true,   // tout le graphe (pas seulement le viewport)
+    scale: 1,
+    // bg: 'white', // décommente si tu veux un fond blanc
+  });
+  const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  downloadTextFile(svgStr, `cytoscape-graph-${ts}.svg`);
+}
+
 
 const store = useDataStore();
 
@@ -144,7 +165,7 @@ function recreateGlobalEdges() {
   cy.add(edges);
 }
 
-//focntion pour les noeuds en bas a droite
+//fonction pour les noeuds en bas a droite
 function repositionIsolatedNodes(radius = 300) {
   const connectedNodes = cy.nodes().filter(n => {
     const edges = n.connectedEdges().filter(e => e.style('display') !== 'none');
@@ -1442,12 +1463,26 @@ watch(() => route.params.datasetId, async (newVal) => {
 
 /* Compteur */
 .total-crosslinks {
-  margin-top: 10px;
+  margin: 10px auto 0 auto; /* haut | horizontal | bas */
   font-weight: bold;
   font-size: 1.1em;
   color: #333;
+  display: block;
+  text-align: center; /* facultatif si tu veux centrer aussi le texte */
 }
-
-
+.export-btn {
+  bottom: 20px;   /* distance du bas */
+  right: 20px;    /* distance de la droite */
+  z-index: 10;    /* pour qu’il soit au-dessus du canvas Cytoscape */
+  padding: 8px 12px;
+  background-color: #0074D9;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.export-btn:hover {
+  background-color: #005fa3;
+}
 
 </style>

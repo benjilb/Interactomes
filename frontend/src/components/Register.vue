@@ -1,19 +1,19 @@
 <template>
   <div style="max-width:400px; margin:40px auto;">
-    <h2>Créer un compte</h2>
+    <h2>Create an account</h2>
     <form @submit.prevent="submit" style="display:grid; gap:8px;">
-      <input v-model="first_name" placeholder="Prénom" required />
-      <input v-model="last_name" placeholder="Nom" required />
+      <input v-model="first_name" placeholder="First name" required />
+      <input v-model="last_name" placeholder="Name" required />
       <input v-model="email" type="email" placeholder="Email" required />
-      <input v-model="password" type="password" placeholder="Mot de passe" required />
+      <input v-model="password" type="password" placeholder="Password" required />
       <button :disabled="loading" type="submit">
-        {{ loading ? 'Création...' : "S'inscrire" }}
+        {{ loading ? 'Creation...' : "Sign up" }}
       </button>
       <p v-if="err" style="color:#e33">{{ err }}</p>
     </form>
     <p style="margin-top:10px;">
-      Déjà inscrit ?
-      <RouterLink to="/login">Se connecter</RouterLink>
+      Already registered?
+      <RouterLink to="/login">Log in</RouterLink>
     </p>
   </div>
 </template>
@@ -42,7 +42,7 @@ async function submit() {
     });
     router.push('/account');
   } catch (e) {
-    err.value = e?.response?.data?.error || "Échec de l'inscription";
+    err.value = e?.response?.data?.error || "Registration failed";
   }
 }
 </script>

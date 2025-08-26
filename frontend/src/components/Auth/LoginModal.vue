@@ -1,11 +1,11 @@
 <template>
   <Modal @close="$emit('close')">
-    <h3 style="margin-top:0">Se connecter</h3>
+    <h3 style="margin-top:0">Log in</h3>
     <form @submit.prevent="submit" style="display:grid; gap:10px; margin-top:12px;">
       <input v-model="email" type="email" placeholder="Email" required />
-      <input v-model="password" type="password" placeholder="Mot de passe" required />
+      <input v-model="password" type="password" placeholder="Password" required />
       <button :disabled="loading" type="submit">
-        {{ loading ? 'Connexion…' : 'Se connecter' }}
+        {{ loading ? 'Login…' : 'Log in' }}
       </button>
       <p v-if="err" style="color:#e66; margin:0">{{ err }}</p>
     </form>
@@ -15,7 +15,7 @@
 <script setup>
 import { ref } from 'vue';
 import Modal from '../Modal.vue';
-import { login, useAuth } from '../../services/auth';
+import { login, useAuth } from '@/services/auth.js';
 
 const emit = defineEmits(['close','success']);
 const { loading } = useAuth();
@@ -28,10 +28,10 @@ async function submit() {
   err.value = '';
   try {
     await login({ email: email.value.trim(), password: password.value });
-    emit('success');    // pour naviguer ensuite
+    emit('success');
     emit('close');
   } catch (e) {
-    err.value = e?.response?.data?.error || 'Échec de connexion';
+    err.value = e?.response?.data?.error || 'Connection failed';
   }
 }
 </script>
