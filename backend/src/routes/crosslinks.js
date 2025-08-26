@@ -37,7 +37,7 @@ router.post('/datasets/:datasetId/crosslinks/import', authRequired, async (req, 
         const { rows } = req.body || {};
 
         if (!Array.isArray(rows) || rows.length === 0) {
-            return res.status(400).json({ error: 'rows vide' });
+            return res.status(400).json({ error: 'rows empty' });
         }
 
         const ds = await Dataset.findByPk(dataset_id);
@@ -64,7 +64,7 @@ router.post('/datasets/:datasetId/crosslinks/import', authRequired, async (req, 
         res.json({ ok: true, inserted: payload.length, dataset: { id: ds.id, rows_count: ds.rows_count, status: ds.status } });
     } catch (e) {
         console.error(e);
-        res.status(500).json({ error: 'Import échoué' });
+        res.status(500).json({ error: 'Import failed' });
     }
 });
 
