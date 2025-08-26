@@ -36,31 +36,36 @@
       <!-- Gene Ontology -->
       <li v-if="parsedGOTerms.length" class="go-section">
         <h4 class="go-title">Gene Ontology</h4>
+
+        <!-- Résumé (chips) -->
         <div class="go-summary">
-          <template v-for="k in ['F','P','C']" :key="k">
-    <span
-        v-if="groupedGO[k] && groupedGO[k].length"
-        class="go-chip"
-        :class="'aspect-' + k"
-    >
-      <span class="dot"></span>
-      {{ ASPECT_INFO[k].label }}
-      <b>{{ groupedGO[k].length }}</b>
-    </span>
+          <template v-for="k in ASPECT_ORDER" :key="'chip-'+k">
+      <span
+          v-if="groupedGO[k] && groupedGO[k].length"
+          class="go-chip"
+          :class="'aspect-'+k"
+      >
+        <span class="dot"></span>
+        {{ ASPECT_INFO[k].label }}
+        <b>{{ groupedGO[k].length }}</b>
+      </span>
           </template>
         </div>
-        <!-- Groupes par aspect : un seul titre par aspect -->
+
+        <!-- Groupes par aspect -->
         <div class="go-groups">
-          <template v-for="k in ASPECT_ORDER" :key="k">
+          <template v-for="k in ASPECT_ORDER" :key="'group-'+k">
             <section
                 v-if="groupedGO[k] && groupedGO[k].length"
                 class="go-group"
-                :class="'aspect-' + k"
+                :class="'aspect-'+k"
             >
               <header class="go-group-head">
-                <span class="dot"></span>
-                <span class="go-group-title">{{ ASPECT_INFO[k].label }}</span>
-                <span class="go-count">{{ groupedGO[k].length }}</span>
+          <span class="left">
+            <span class="dot"></span>
+            {{ ASPECT_INFO[k].label }}
+          </span>
+                <span class="right">{{ groupedGO[k].length }}</span>
               </header>
 
               <div class="go-card-list">
@@ -68,10 +73,15 @@
                     v-for="g in groupedGO[k]"
                     :key="g.id"
                     class="go-card"
-                    :class="'aspect-' + k"
+                    :class="'aspect-'+k"
                 >
                   <header class="go-card-head">
-                    <a class="go-id" :href="quickgoUrl(g.id)" target="_blank" rel="noopener noreferrer">
+                    <a
+                        class="go-id"
+                        :href="quickgoUrl(g.id)"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
                       {{ g.id }}
                     </a>
                   </header>
@@ -81,8 +91,93 @@
             </section>
           </template>
         </div>
+      </li>
+
+
+      <!-- Subcellular locations -->
+      <li v-if="parsedSubLoc.length" class="sl-section">
+        <h4 class="go-title">Subcellular locations</h4>
+
+      <!-- résumé par catégorie -->
+      <div class="sl-summary">
+        <template v-for="k in SL_ORDER" :key="'sl-chip-'+k">
+          <span
+              v-if="groupedSubLoc[k] && groupedSubLoc[k].length"
+              class="sl-chip"
+              :class="'sl-'+k"
+          >
+          <span class="dot"></span>
+            {{ SL_LABEL[k] }}
+            <b>{{ groupedSubLoc[k].length }}</b>
+          </span>
+        </template>
+      </div>
+
+
+        <!-- groupes par catégorie -->
+        <div class="sl-groups">
+          <template v-for="k in SL_ORDER" :key="'sl-group-'+k">
+            <section
+                v-if="groupedSubLoc[k] && groupedSubLoc[k].length"
+                class="sl-group"
+                :class="'sl-'+k"
+            >
+              <header class="sl-group-head">
+                <span class="left"><span class="dot"></span>{{ SL_LABEL[k] }}</span>
+                <span class="right">{{ groupedSubLoc[k].length }}</span>
+              </header>
+
+              <div class="sl-card-list">
+                <article
+                    v-for="loc in groupedSubLoc[k]"
+                    :key="(loc.id || 'noid') + '|' + loc.value"
+                    class="sl-card"
+                >
+                  <header class="sl-card-head">
+                    <span class="sl-kind">{{ SL_LABEL[k] }}</span>
+                    <a v-if="loc.id" class="sl-id" :href="slUrl(loc.id)" target="_blank" rel="noopener noreferrer">{{ loc.id }}</a>
+                  </header>
+                  <div class="sl-term">{{ loc.value }}</div>
+
+                  <ul v-if="loc.evidences?.length" class="sl-ev-list">
+                    <li v-for="(ev,i) in loc.evidences" :key="i" class="sl-ev">
+                      <code v-if="ev.evidenceCode">{{ ev.evidenceCode }}</code>
+                      <span v-if="ev.source"> — {{ ev.source }}</span>
+                      <template v-if="ev.source==='PubMed' && ev.id">
+                        : <a :href="`https://pubmed.ncbi.nlm.nih.gov/${ev.id}/`" target="_blank" rel="noopener noreferrer">{{ ev.id }}</a>
+                      </template>
+                      <template v-else-if="ev.id"> ({{ ev.id }}) </template>
+                    </li>
+                  </ul>
+                </article>
+              </div>
+            </section>
+          </template>
+        </div>
 
       </li>
+
+      <!-- STRING references -->
+      <li v-if="stringRefs.length" class="string-section">
+        <h4 class="go-title">STRING</h4>
+        <div class="string-chips">
+          <a
+              v-for="sid in stringRefs"
+              :key="sid"
+              class="string-chip"
+              :href="stringUrl(sid)"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open in STRING"
+          >
+            {{ sid }}
+          </a>
+        </div>
+      </li>
+
+
+
+
 
     </ul>
   </div>
@@ -190,6 +285,62 @@ const parsedGOTerms = computed(() => {
   }
   return []
 })
+
+// Helpers liens
+const slUrl = (slId) => slId ? `https://www.uniprot.org/locations/${encodeURIComponent(slId)}` : '#';
+const stringUrl = (sid) => `https://string-db.org/network/${encodeURIComponent(sid)}`;
+
+// Subcellular locations: string JSON -> tableau
+const parsedSubLoc = computed(() => {
+  const raw = protein?.subcellular_locations;
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter(x => x && x.value);
+  if (typeof raw === 'string') {
+    try {
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr.filter(x => x && x.value) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+});
+
+// Grouper par nature (location, topology, orientation, note)
+const SL_ORDER = ['location','topology','orientation','note'];
+const SL_LABEL = {
+  location: 'Location',
+  topology: 'Topology',
+  orientation: 'Orientation',
+  note: 'Note'
+};
+
+const groupedSubLoc = computed(() => {
+  return parsedSubLoc.value.reduce((acc, x) => {
+    const k = (x.kind || 'location').toLowerCase();
+    (acc[k] ||= []).push(x);
+    return acc;
+  }, {});
+});
+
+// STRING: "id;id;..." -> tableau
+const stringRefs = computed(() => {
+  const raw = protein?.string_refs;
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  if (typeof raw === 'string') {
+    // supporte "a;b;c" ou JSON "['a','b']"
+    if (raw.includes(';')) return raw.split(';').map(s => s.trim()).filter(Boolean);
+    try {
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr.filter(Boolean) : (raw ? [raw] : []);
+    } catch {
+      return raw ? [raw] : [];
+    }
+  }
+  return [];
+});
+
 
 const groupedGO = computed(() => {
   return parsedGOTerms.value.reduce((acc, t) => {
@@ -369,5 +520,70 @@ h3 { margin-top: 0; }
 .go-id {
   margin-left: auto;          /* assure le collage à droite même si d'autres éléments arrivent */
 }
+/* Ligne de séparation légère comme GO */
+.sl-section, .string-section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #3a3a43;
+}
+
+/* résumé chips */
+.sl-summary {
+  display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 8px;
+}
+.sl-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 10px; border-radius: 999px; font-size: 0.9rem;
+  background: #2f2f37; border: 1px solid #3a3a43; color: #e6e6e6;
+}
+.sl-chip .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+/* couleurs par catégorie */
+.sl-location .dot, .sl-group.sl-location .left .dot { background: #60a5fa; }      /* bleu */
+.sl-topology  .dot, .sl-group.sl-topology  .left .dot { background: #f59e0b; }    /* orange */
+.sl-orientation .dot, .sl-group.sl-orientation .left .dot { background: #10b981; }/* vert */
+.sl-note      .dot, .sl-group.sl-note      .left .dot { background: #a78bfa; }    /* violet */
+
+/* entête de groupe */
+.sl-group-head {
+  display:flex; align-items:center; justify-content:space-between;
+  margin: 4px 0 8px;
+  font-weight: 700; color: #eaeaea;
+}
+.sl-group-head .left { display:flex; align-items:center; gap:8px; }
+
+/* grille cartes */
+.sl-card-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.sl-card {
+  background: #2f2f37; border: 1px solid #3a3a43; border-radius: 8px; padding: 8px 10px;
+}
+.sl-card-head {
+  display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;
+}
+.sl-kind { font-weight: 700; font-size: .85rem; color: #eaeaea; }
+.sl-id   { color: #b9d4ff; text-decoration: none; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: .9rem; }
+.sl-id:hover { text-decoration: underline; }
+.sl-term { color:#fff; font-weight:600; line-height:1.2; }
+
+/* evidences */
+.sl-ev-list { margin-top:6px; padding-left:18px; }
+.sl-ev { color:#cfcfcf; font-size:.9rem; }
+.sl-ev code { background:#3a3a43; padding:0 .25rem; border-radius:4px; }
+
+/* STRING chips */
+.string-chips { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+.string-chip {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:4px 10px; border-radius:999px; font-size:.9rem;
+  background:#243b55; border:1px solid #3a3a43; color:#dbeafe; text-decoration:none;
+}
+.string-chip:hover { background:#1f2f45; }
+
+
+
 
 </style>

@@ -5,8 +5,8 @@ import { fetchDatasetGraph } from '@/services/datasets';
 export const useDataStore = defineStore('data', {
     state: () => ({
         datasetMeta: null,
-        fastaData: [], // protéines
-        csvData:   [], // crosslinks
+        fastaData: [],
+        csvData:   [],
     }),
     actions: {
         async loadDataset(datasetId) {
@@ -14,7 +14,6 @@ export const useDataStore = defineStore('data', {
 
             this.datasetMeta = dataset;
 
-            // ⚠️ Garder go_terms tel quel (string JSON ou array)
             this.fastaData = proteins.map(p => ({
                 uniprot_id:   p.uniprot_id,
                 gene_name:    p.gene_name,
@@ -24,9 +23,11 @@ export const useDataStore = defineStore('data', {
                 taxon_id:     p.taxon_id,
                 updated_at:   p.updated_at,
                 go_terms:     p.go_terms,
+                subcellular_locations: p.subcellular_locations ?? '[]',
+                string_refs:           p.string_refs ?? ''
             }));
             // On alimente tes structures EXACTES
-            this.csvData   = crosslinks;               // [{ Protein1, Protein2, AbsPos1, AbsPos2, Score }]
+            this.csvData   = crosslinks;
         },
         clear() {
             this.fastaData = [];
