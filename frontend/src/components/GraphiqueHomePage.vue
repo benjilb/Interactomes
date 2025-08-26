@@ -211,11 +211,11 @@ function drawGraph(nodes, links) {
   })
 
   const simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).distance(20).strength(1))
-      .force('charge', d3.forceManyBody().strength(-10))
+      .force('link', d3.forceLink(links).distance(20).strength(0.3))  // <--- plus faible
+      .force('charge', d3.forceManyBody().strength(-20))              // <--- plus faible répulsion
       .force('collide', d3.forceCollide(8))
-      .force('x', d3.forceX(0).strength(0.05))
-      .force('y', d3.forceY(0).strength(0.05))
+      .force('x', d3.forceX(width / 2).strength(0.03))                // centrage doux
+      .force('y', d3.forceY(height / 2).strength(0.03))
       .force('center', d3.forceCenter(width / 2, height / 2))
       .alpha(1)
       .restart()
