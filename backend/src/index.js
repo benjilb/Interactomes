@@ -3,8 +3,9 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 
-import uploadsRoutes from './routes/upload.js';
 import authRoutes from './routes/auth.js';
+import uploadsRoutes from './routes/upload.js';
+import organellesRoutes from './routes/organelles.js';
 import datasetsRoutes from './routes/datasets.js';
 import crosslinksRoutes from './routes/crosslinks.js';
 
@@ -56,6 +57,7 @@ import './database/initDB.js';
 import './models/index.js';
 
 app.use('/auth', authRoutes);
+app.use('/organelles', organellesRoutes);
 app.use('/uploads', uploadsRoutes);
 app.use('/datasets', datasetsRoutes);
 app.use('/', crosslinksRoutes);
