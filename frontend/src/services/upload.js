@@ -1,9 +1,10 @@
 import api from './api';
 
 // 1) PREPARE: envoie le fichier, reçoit l’analyse (organism/organelle) + datasets existants
-export async function prepareUpload(file) {
+export async function prepareUpload(file, organelleId) {
     const fd = new FormData();
     fd.append('file', file);
+    fd.append('organelle_id', String(organelleId));
     const { data } = await api.post('/uploads/prepare', fd, {
         headers: { 'Content-Type': 'multipart/form-data' }
     });
