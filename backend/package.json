@@ -8,7 +8,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "initdb": "node src/database/initDB.js",
-    "import": "node src/database/importData.js"
+    "importOrganelle": "node src/database/importOrganelle.js"
   },
   "keywords": [],
   "author": "",
