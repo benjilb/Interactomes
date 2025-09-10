@@ -14,13 +14,14 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     allowedHosts: ['interactomes.scicore.unibas.ch'],
-    // 👇 IMPORTANT pour HMR derrière Caddy en HTTP
+    hmr: false,
+   /*
     hmr: {
       host: 'interactomes.scicore.unibas.ch',
       //hmr: { host: 'interactomes.scicore.unibas.ch', protocol: 'wss', clientPort: 443 } for https
       protocol: 'ws',
       clientPort: 80,
-    },
+    },*/
   },
   preview: {
     allowedHosts: ['interactomes.scicore.unibas.ch'],
