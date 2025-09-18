@@ -269,7 +269,7 @@ router.post('/commit', authRequired, async (req, res) => {
     } catch (e) {
         console.error('POST /uploads/commit ERROR:', e);
         return res.status(500).json({
-            error: 'Commit échoué',
+            error: 'Commit failed',
             details: e?.original?.sqlMessage || e?.message || String(e)
         });    }
 });
