@@ -29,66 +29,66 @@ const upload = multer({ storage });
 
 // Upsert proteins selon ton schéma (uniprot_id PK, taxon_id NOT NULL)
 // routes/upload.js (ou ton service équivalent)
-async function upsertProteinsForTaxon(accessions, fallbackTaxonId, { refreshIfEmpty = true } = {}) {
-    // 1) ce qui existe déjà
-    const existing = await Protein.findAll({ where: { uniprot_id: accessions }, raw: true });
+async function upsertProteinsForTaxon(accessions, fallbackTaxonId) {
+    const existing = await Protein.findAll({ where: { uniprot_id: accessions } });
     const have = new Set(existing.map(p => p.uniprot_id));
-
-    // 2) manquantes
     const missing = accessions.filter(a => !have.has(a));
+    if (missing.length === 0) return;
 
-    // 3) à rafraîchir si champs vides
-    const toRefresh = refreshIfEmpty
-        ? existing
-            .filter(p =>
-                !p.subcellular_locations || p.subcellular_locations === '[]' ||
-                p.string_refs == null    || p.string_refs === ''
-            )
-            .map(p => p.uniprot_id)
-        : [];
-
-    // 4) union (sans doublons)
-    const toFetch = [...new Set([...missing, ...toRefresh])];
-    if (toFetch.length === 0) return;
-
-    // 5) fetch par paquets
-    const CHUNK = 5;
-    for (let i = 0; i < toFetch.length; i += CHUNK) {
-        const slice = toFetch.slice(i, i + CHUNK);
-        const infos = await Promise.all(slice.map(acc => getProteinInfo(acc).catch(() => null)));
-        const payload = infos.filter(Boolean).map(info => ({
-            uniprot_id:   info.uniprot_id,
-            taxon_id:     info.taxon_id || fallbackTaxonId,
-            gene_name:    info.gene_name || null,
-            protein_name: info.protein_name || null,
-            sequence:     info.sequence || null,
-            length:       info.length || null,
-            go_terms:     info.go_terms || null,
-            subcellular_locations: info.subcellular_locations || null,
-            string_refs:           info.string_refs || null,
-            updated_at:   new Date(),
-        }));
-
-        if (payload.length) {
-            await Protein.bulkCreate(payload, { ignoreDuplicates: true });
-            for (const p of payload) {
-                await Protein.update(
-                    {
-                        taxon_id: p.taxon_id,
-                        gene_name: p.gene_name,
-                        protein_name: p.protein_name,
-                        sequence: p.sequence,
-                        length: p.length,
-                        go_terms: p.go_terms,
-                        subcellular_locations: p.subcellular_locations,
-                        string_refs: p.string_refs,
-                        updated_at: new Date(),
-                    },
-                    { where: { uniprot_id: p.uniprot_id } }
-                );
-            }
-        }
+    const CHUNK = 25;          // 20~50 raisonnable
+    const PARALLEL = 3;        // 2~4 flux en parallèle (évite 10+)
+    const chunks = [];
+    for (let i = 0; i < missing.length; i += CHUNK) {
+        chunks.push(missing.slice(i, i + CHUNK));
     }
+
+    // petit pool de workers
+    let idx = 0;
+    await Promise.all(
+        Array.from({ length: Math.min(PARALLEL, chunks.length) }).map(async () => {
+            while (idx < chunks.length) {
+                const myIndex = idx++;
+                const slice = chunks[myIndex];
+                const infos = await Promise.all(
+                    slice.map(acc => getProteinInfo(acc).catch(() => null))
+                );
+
+                const payload = infos.filter(Boolean).map(info => ({
+                    uniprot_id:   info.uniprot_id,
+                    taxon_id:     info.taxon_id || fallbackTaxonId,
+                    gene_name:    info.gene_name || null,
+                    protein_name: info.protein_name || null,
+                    sequence:     info.sequence || null,
+                    length:       info.length || null,
+                    go_terms:     info.go_terms || null,
+                    subcellular_locations: info.subcellular_locations || '[]',
+                    string_refs:  info.string_refs || '[]',
+                    updated_at:   new Date(),
+                }));
+
+                if (payload.length) {
+                    await Protein.bulkCreate(payload, { ignoreDuplicates: true });
+                    // Update pour rafraîchir si déjà existait
+                    for (const p of payload) {
+                        await Protein.update(
+                            {
+                                taxon_id: p.taxon_id,
+                                gene_name: p.gene_name,
+                                protein_name: p.protein_name,
+                                sequence: p.sequence,
+                                length: p.length,
+                                go_terms: p.go_terms,
+                                subcellular_locations: p.subcellular_locations,
+                                string_refs: p.string_refs,
+                                updated_at: new Date(),
+                            },
+                            { where: { uniprot_id: p.uniprot_id } }
+                        );
+                    }
+                }
+            }
+        })
+    );
 }
 
 
@@ -250,7 +250,7 @@ router.post('/commit', authRequired, async (req, res) => {
             return res.status(400).json({ error: 'Aucun crosslink valide (positions absentes ou non numériques)' });
         }
         // Upsert proteins manquantes (⚠️ Protein.taxon_id NOT NULL)
-        await upsertProteinsForTaxon([...accs], Number(organism_taxon_id), { refreshIfEmpty: true });
+        await upsertProteinsForTaxon([...accs], Number(organism_taxon_id));
 
 
 
