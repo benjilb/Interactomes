@@ -11,11 +11,10 @@
       <nav class="main-nav" aria-label="Navigation principale">
         <RouterLink to="/" class="nav-link">Home </RouterLink>
         <RouterLink to="/datasets" class="nav-link">Datasets</RouterLink>
+        <RouterLink v-if="isLoggedIn" to="/upload" class="cta"> Upload a graph </RouterLink>
       </nav>
     </div>
-    <RouterLink v-if="isLoggedIn" to="/upload" class="cta">
-      Upload a graph
-    </RouterLink>
+
 
     <div class="header-right">
       <!-- Hello + Logout en ligne quand connecté -->
