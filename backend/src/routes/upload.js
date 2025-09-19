@@ -29,68 +29,67 @@ const upload = multer({ storage });
 
 // Upsert proteins selon ton schéma (uniprot_id PK, taxon_id NOT NULL)
 // routes/upload.js (ou ton service équivalent)
-async function upsertProteinsForTaxon(accessions, fallbackTaxonId) {
-    const existing = await Protein.findAll({ where: { uniprot_id: accessions } });
+async function upsertProteinsForTaxon(accessions, fallbackTaxonId, { refreshIfEmpty = true } = {}) {
+    // 1) ce qui existe déjà
+    const existing = await Protein.findAll({ where: { uniprot_id: accessions }, raw: true });
     const have = new Set(existing.map(p => p.uniprot_id));
+
+    // 2) manquantes
     const missing = accessions.filter(a => !have.has(a));
-    if (missing.length === 0) return;
 
-    const CHUNK = 25;          // 20~50 raisonnable
-    const PARALLEL = 3;        // 2~4 flux en parallèle (évite 10+)
-    const chunks = [];
-    for (let i = 0; i < missing.length; i += CHUNK) {
-        chunks.push(missing.slice(i, i + CHUNK));
-    }
+    // 3) à rafraîchir si champs vides
+    const toRefresh = refreshIfEmpty
+        ? existing
+            .filter(p =>
+                !p.subcellular_locations || p.subcellular_locations === '[]' ||
+                p.string_refs == null    || p.string_refs === ''
+            )
+            .map(p => p.uniprot_id)
+        : [];
 
-    // petit pool de workers
-    let idx = 0;
-    await Promise.all(
-        Array.from({ length: Math.min(PARALLEL, chunks.length) }).map(async () => {
-            while (idx < chunks.length) {
-                const myIndex = idx++;
-                const slice = chunks[myIndex];
-                const infos = await Promise.all(
-                    slice.map(acc => getProteinInfo(acc).catch(() => null))
+    // 4) union (sans doublons)
+    const toFetch = [...new Set([...missing, ...toRefresh])];
+    if (toFetch.length === 0) return;
+
+    // 5) fetch par paquets
+    const CHUNK = 5;
+    for (let i = 0; i < toFetch.length; i += CHUNK) {
+        const slice = toFetch.slice(i, i + CHUNK);
+        const infos = await Promise.all(slice.map(acc => getProteinInfo(acc).catch(() => null)));
+        const payload = infos.filter(Boolean).map(info => ({
+            uniprot_id:   info.uniprot_id,
+            taxon_id:     info.taxon_id || fallbackTaxonId,
+            gene_name:    info.gene_name || null,
+            protein_name: info.protein_name || null,
+            sequence:     info.sequence || null,
+            length:       info.length || null,
+            go_terms:     info.go_terms || null,
+            subcellular_locations: info.subcellular_locations || null,
+            string_refs:           info.string_refs || null,
+            updated_at:   new Date(),
+        }));
+
+        if (payload.length) {
+            await Protein.bulkCreate(payload, { ignoreDuplicates: true });
+            for (const p of payload) {
+                await Protein.update(
+                    {
+                        taxon_id: p.taxon_id,
+                        gene_name: p.gene_name,
+                        protein_name: p.protein_name,
+                        sequence: p.sequence,
+                        length: p.length,
+                        go_terms: p.go_terms,
+                        subcellular_locations: p.subcellular_locations,
+                        string_refs: p.string_refs,
+                        updated_at: new Date(),
+                    },
+                    { where: { uniprot_id: p.uniprot_id } }
                 );
-
-                const payload = infos.filter(Boolean).map(info => ({
-                    uniprot_id:   info.uniprot_id,
-                    taxon_id:     info.taxon_id || fallbackTaxonId,
-                    gene_name:    info.gene_name || null,
-                    protein_name: info.protein_name || null,
-                    sequence:     info.sequence || null,
-                    length:       info.length || null,
-                    go_terms:     info.go_terms || null,
-                    subcellular_locations: info.subcellular_locations || '[]',
-                    string_refs:  info.string_refs || '[]',
-                    updated_at:   new Date(),
-                }));
-
-                if (payload.length) {
-                    await Protein.bulkCreate(payload, { ignoreDuplicates: true });
-                    // Update pour rafraîchir si déjà existait
-                    for (const p of payload) {
-                        await Protein.update(
-                            {
-                                taxon_id: p.taxon_id,
-                                gene_name: p.gene_name,
-                                protein_name: p.protein_name,
-                                sequence: p.sequence,
-                                length: p.length,
-                                go_terms: p.go_terms,
-                                subcellular_locations: p.subcellular_locations,
-                                string_refs: p.string_refs,
-                                updated_at: new Date(),
-                            },
-                            { where: { uniprot_id: p.uniprot_id } }
-                        );
-                    }
-                }
             }
-        })
-    );
+        }
+    }
 }
-
 
 
 // —— routes ——
@@ -253,36 +252,8 @@ router.post('/commit', authRequired, async (req, res) => {
         // Upsert proteins manquantes (⚠️ Protein.taxon_id NOT NULL)
         await upsertProteinsForTaxon([...accs], Number(organism_taxon_id), { refreshIfEmpty: true });
 
-
-        // après avoir upserté, récupère un map id -> taxon
-        const proteinTaxa = new Map(
-            (await Protein.findAll({ where: { uniprot_id: [...accs] }, attributes: ['uniprot_id','taxon_id'], raw:true }))
-                .map(p => [p.uniprot_id, p.taxon_id])
-        );
-
-        // au moment de remplir payload
-        const t1 = proteinTaxa.get(p1);
-        const t2 = proteinTaxa.get(p2);
-        if (t1 !== Number(organism_taxon_id) && t2 !== Number(organism_taxon_id)) {
-            // les deux hors organisme => skip
-            return;
-        }
-
-
-        if (payload.length) {
-            const CHUNK_XL = 2000; // ajuste 1000~5000 selon ta DB
-            const t = await Crosslink.sequelize.transaction();
-            try {
-                for (let i = 0; i < payload.length; i += CHUNK_XL) {
-                    const slice = payload.slice(i, i + CHUNK_XL);
-                    await Crosslink.bulkCreate(slice, { transaction: t });
-                }
-                await t.commit();
-            } catch (e) {
-                await t.rollback();
-                throw e;
-            }
-        }
+        // Insert crosslinks (pas de created_at dans ton modèle)
+        if (payload.length) await Crosslink.bulkCreate(payload);
 
         // MAJ dataset
         dataset.rows_count = (dataset.rows_count || 0) + payload.length;

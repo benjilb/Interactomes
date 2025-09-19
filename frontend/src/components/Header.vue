@@ -11,7 +11,7 @@
       <nav class="main-nav" aria-label="Navigation principale">
         <RouterLink to="/" class="nav-link">Home </RouterLink>
         <RouterLink to="/datasets" class="nav-link">Datasets</RouterLink>
-        <RouterLink v-if="isLoggedIn" to="/upload" class="cta"> Upload a graph </RouterLink>
+        <RouterLink v-if="isLoggedIn" to="/upload" class="nav-link cta"> Upload a graph </RouterLink>
       </nav>
     </div>
 
@@ -64,6 +64,7 @@
             Log out
           </button>
         </template>
+
       </div>
     </div>
   </header>
@@ -134,6 +135,20 @@ function fullName(u){
   color: #cfcfcf; text-decoration: none; padding: 0.35rem 0.55rem; border-radius: 6px;
   transition: background-color 120ms ease, color 120ms ease;
 }
+
+.nav-link.cta {
+  color: #4a90e2; /* bleu plus visible */
+  font-weight: 600;
+  border: 1px solid transparent;
+  background-color: transparent;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.nav-link.cta:hover {
+  color: #fff;
+  background-color: #4a90e2;
+}
+
 .nav-link:hover, .nav-link.router-link-active { color: #fff; background-color: #2a2a2a; }
 
 /* RIGHT */
@@ -171,8 +186,5 @@ function fullName(u){
   .title { display: none; }
   .main-nav { display: none; }
 }
-/*
 
-<RouterLink to="/viewer" class="nav-link">Visualiser</RouterLink>
-<RouterLink to="/about" class="nav-link">À propos</RouterLink>*/
 </style>
