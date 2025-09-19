@@ -49,7 +49,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref, computed, watch } from 'vue';
+import { onMounted, ref, computed } from 'vue';
 import { fetchAllDatasets } from '@/services/datasets';
 
 const all = ref([]);
@@ -72,7 +72,11 @@ onMounted(async () => {
 const flatCount = computed(() => all.value.length);
 
 function fmt(d) {
-  try { return new Date(d).toLocaleString(); } catch { return d; }
+  try {
+    return new Date(d).toLocaleString();
+  } catch {
+    return d;
+  }
 }
 
 const filtered = computed(() => {
@@ -91,41 +95,72 @@ const filtered = computed(() => {
   });
 });
 
+// Helpers pour labels d’organismes
+function isFallbackLabel(s) {
+  return /^taxon\s*\d+$/i.test((s || '').trim());
+}
+function labelFromOrganism(org) {
+  return (
+      org?.scientific_name ||
+      org?.common_name ||
+      org?.name || // sécurité si l’API a juste "name"
+      null
+  );
+}
+
 // Grouping: User -> Organism -> Organelle
 const grouped = computed(() => {
   const byUser = new Map();
+
   for (const d of filtered.value) {
+    // ----- User level -----
     if (!byUser.has(d.user.id)) {
       byUser.set(d.user.id, { user: d.user, orgs: new Map() });
     }
     const u = byUser.get(d.user.id);
 
-    const tax = d.organism?.taxon_id;
-    if (!u.orgs.has(tax)) {
-      const display = d.organism?.scientific_name || d.organism?.common_name || `taxon ${tax}`;
-      u.orgs.set(tax, { taxon_id: tax, display, organs: new Map() });
-    }
-    const org = u.orgs.get(tax);
+    // ----- Organism level -----
+    const tax = d.organism?.taxon_id ?? 'unknown';
+    const incomingLabel = labelFromOrganism(d.organism);
 
-    const orgId = d.organelle?.id;
-    const orgName = d.organelle?.name || '—';
-    if (!org.organs.has(orgId)) {
-      org.organs.set(orgId, { id: orgId, name: orgName, datasets: [] });
+    if (!u.orgs.has(tax)) {
+      // Première rencontre
+      u.orgs.set(tax, {
+        taxon_id: tax,
+        display: incomingLabel || `taxon ${tax}`,
+        organs: new Map(),
+      });
+    } else {
+      // Déjà rencontré → upgrade le label si on trouve mieux
+      const orgEntry = u.orgs.get(tax);
+      if (incomingLabel && isFallbackLabel(orgEntry.display)) {
+        orgEntry.display = incomingLabel;
+      }
     }
-    org.organs.get(orgId).datasets.push(d);
+
+    const orgEntry = u.orgs.get(tax);
+
+    // ----- Organelle level -----
+    const orgId = d.organelle?.id ?? 'unknown';
+    const orgName = d.organelle?.name || '—';
+    if (!orgEntry.organs.has(orgId)) {
+      orgEntry.organs.set(orgId, { id: orgId, name: orgName, datasets: [] });
+    }
+    orgEntry.organs.get(orgId).datasets.push(d);
   }
 
-  // Transform to arrays for v-for
+  // Map -> Array pour v-for
   return Array.from(byUser.values()).map(u => ({
     user: u.user,
     organisms: Array.from(u.orgs.values()).map(o => ({
       taxon_id: o.taxon_id,
       display: o.display,
-      organelles: Array.from(o.organs.values())
-    }))
+      organelles: Array.from(o.organs.values()),
+    })),
   }));
 });
 </script>
+
 
 <style scoped>
 .wrap { max-width: 1000px; margin: 28px auto; padding: 0 12px; }

@@ -252,9 +252,22 @@ router.post('/commit', authRequired, async (req, res) => {
         // Upsert proteins manquantes (⚠️ Protein.taxon_id NOT NULL)
         await upsertProteinsForTaxon([...accs], Number(organism_taxon_id), { refreshIfEmpty: true });
 
-        // Insert crosslinks (pas de created_at dans ton modèle)
-        if (payload.length) await Crosslink.bulkCreate(payload);
 
+
+        if (payload.length) {
+            const CHUNK_XL = 2000; // ajuste 1000~5000 selon ta DB
+            const t = await Crosslink.sequelize.transaction();
+            try {
+                for (let i = 0; i < payload.length; i += CHUNK_XL) {
+                    const slice = payload.slice(i, i + CHUNK_XL);
+                    await Crosslink.bulkCreate(slice, { transaction: t });
+                }
+                await t.commit();
+            } catch (e) {
+                await t.rollback();
+                throw e;
+            }
+        }
         // MAJ dataset
         dataset.rows_count = (dataset.rows_count || 0) + payload.length;
         if (dataset.status === 'uploaded') dataset.status = 'parsed';
