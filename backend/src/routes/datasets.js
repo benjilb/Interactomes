@@ -134,7 +134,7 @@ router.get('/all', async (req, res) => {
  */
 router.get('/:id', async (req, res) => {
     const ds = await Dataset.findByPk(req.params.id);
-    if (!ds) return res.status(404).json({ error: 'Dataset introuvable' });
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' });
     res.json({ dataset: ds });
 });
 
@@ -158,10 +158,10 @@ router.post('/', authRequired, async (req, res) => {
         res.status(201).json({ dataset });
     } catch (e) {
         if (e?.name === 'SequelizeUniqueConstraintError') {
-            return res.status(409).json({ error: 'Ce fichier existe déjà pour cet utilisateur' });
+            return res.status(409).json({ error: 'This file already exists for this user.' });
         }
         console.error(e);
-        res.status(500).json({ error: 'Création dataset échouée' });
+        res.status(500).json({ error: 'Dataset creation failed' });
     }
 });
 
@@ -172,7 +172,7 @@ router.post('/', authRequired, async (req, res) => {
  */
 router.patch('/:id', authRequired, async (req, res) => {
     const ds = await Dataset.findByPk(req.params.id);
-    if (!ds) return res.status(404).json({ error: 'Dataset introuvable' });
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' });
     const { status, rows_count, file_sha256 } = req.body || {};
     if (status) ds.status = status;
     if (rows_count !== undefined) ds.rows_count = rows_count;
@@ -187,7 +187,7 @@ router.patch('/:id', authRequired, async (req, res) => {
  */
 router.delete('/:id', authRequired, async (req, res) => {
     const ds = await Dataset.findByPk(req.params.id);
-    if (!ds) return res.status(404).json({ error: 'Dataset introuvable' });
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' });
     await ds.destroy();
     res.json({ ok: true });
 });

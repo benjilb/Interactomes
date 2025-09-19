@@ -41,7 +41,7 @@ router.post('/datasets/:datasetId/crosslinks/import', authRequired, async (req, 
         }
 
         const ds = await Dataset.findByPk(dataset_id);
-        if (!ds) return res.status(404).json({ error: 'Dataset introuvable' });
+        if (!ds) return res.status(404).json({ error: 'Dataset not found' });
 
         // mapping CSV -> colonnes DB (adapte ici si besoin)
         const now = new Date();

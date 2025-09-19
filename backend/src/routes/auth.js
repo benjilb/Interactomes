@@ -19,10 +19,10 @@ router.post('/register', async (req, res) => {
     try {
         const { email, first_name, last_name, password } = req.body || {};
         if (!email || !first_name || !last_name || !password) {
-            return res.status(400).json({ error: 'Champs requis manquants' });
+            return res.status(400).json({ error: 'Required fields are missing' });
         }
         const exist = await User.findOne({ where: { email } });
-        if (exist) return res.status(409).json({ error: 'Email déjà utilisé' });
+        if (exist) return res.status(409).json({ error: 'Email already in use' });
 
         const password_hash = await bcrypt.hash(password, 12);
         const user = await User.create({
@@ -53,19 +53,19 @@ router.post('/login', async (req, res) => {
         // 1) Validation stricte du body
         if (typeof email !== 'string' || typeof password !== 'string' ||
             email.trim() === '' || password === '') {
-            return res.status(400).json({ error: 'email et password sont requis' });
+            return res.status(400).json({ error: 'Email and password are required.' });
         }
 
         const user = await User.findOne({ where: { email } });
-        if (!user) return res.status(401).json({ error: 'Identifiants invalides' });
+        if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
         const ok = await bcrypt.compare(password, user.password_hash);
-        if (!ok) return res.status(401).json({ error: 'Identifiants invalides' });
+        if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
 
         // 4) Signe le token uniquement si SECRET est là
         if (!process.env.JWT_SECRET) {
-            console.error('JWT_SECRET manquant');
-            return res.status(500).json({ error: 'Mauvaise configuration serveur' });
+            console.error('JWT_SECRET missing');
+            return res.status(500).json({ error: 'Incorrect server configuration' });
         }
 
         const token = signToken(user);
@@ -80,7 +80,7 @@ router.post('/login', async (req, res) => {
         });
     } catch {
         console.error('POST /auth/login ERROR:', e);
-        return res.status(500).json({ error: 'Erreur serveur' });
+        return res.status(500).json({ error: 'Server error' });
     }
 });
 
@@ -89,15 +89,15 @@ router.get('/me', async (req, res) => {
     try {
         const hdr = req.headers.authorization || '';
         const token = hdr.startsWith('Bearer ') ? hdr.slice(7) : null;
-        if (!token) return res.status(401).json({ error: 'Token manquant' });
+        if (!token) return res.status(401).json({ error: 'Missing token' });
         const p = jwt.verify(token, process.env.JWT_SECRET);
         const user = await User.findByPk(p.id, {
             attributes: ['id', 'email', 'first_name', 'last_name', 'created_at']
         });
-        if (!user) return res.status(404).json({ error: 'Introuvable' });
+        if (!user) return res.status(404).json({ error: 'Not found' });
         res.json({ user });
     } catch {
-        res.status(401).json({ error: 'Token invalide' });
+        res.status(401).json({ error: 'Invalid token' });
     }
 });
 

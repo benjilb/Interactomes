@@ -6,7 +6,7 @@ export function authRequired(req, res, next) {
 
     const hdr = req.headers.authorization || '';
     if (!/^Bearer\s+/i.test(hdr)) {
-        return res.status(401).json({ error: 'Token manquant' });
+        return res.status(401).json({ error: 'Missing token' });
     }
 
     const token = hdr.replace(/^Bearer\s+/i, '');
@@ -19,7 +19,7 @@ export function authRequired(req, res, next) {
             payload.user_id;
 
         if (!uid) {
-            return res.status(401).json({ error: 'Token invalide (id absent)' });
+            return res.status(401).json({ error: 'Invalid token (ID missing)' });
         }
 
         req.user = {
@@ -32,6 +32,6 @@ export function authRequired(req, res, next) {
 
         next();
     } catch (e) {
-        return res.status(401).json({ error: 'Token invalide' });
+        return res.status(401).json({ error: 'Invalid token' });
     }
 }
