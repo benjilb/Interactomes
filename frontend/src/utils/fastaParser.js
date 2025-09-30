@@ -57,6 +57,6 @@ export function parseFasta(text) {
         console.log("➕ Dernière entrée ajoutée :", current);
     }
 
-    console.log(`✅ Total protéines parsées : ${entries.length}`);
+    console.log(`Total protéines parsées : ${entries.length}`);
     return entries;
 }

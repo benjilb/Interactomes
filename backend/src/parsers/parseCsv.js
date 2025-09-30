@@ -29,7 +29,7 @@ export function parseCsv(filePath) {
             obj[h] = val;
         });
 
-        // ✅ Comportement identique : ignorer si Protein1 manquant, sinon fallback Protein2 <- Protein1
+        //Comportement identique : ignorer si Protein1 manquant, sinon fallback Protein2 <- Protein1
         if (!obj.Protein1) {
             console.warn(`Ligne ${idx + 2} ignorée : champ Protein1 manquant`);
             return null;
@@ -39,5 +39,5 @@ export function parseCsv(filePath) {
         }
 
         return obj;
-    }).filter(Boolean); // ✅ Supprimer les lignes null (avec Protein1 manquant)
+    }).filter(Boolean); //Supprimer les lignes null (avec Protein1 manquant)
 }

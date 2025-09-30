@@ -13,11 +13,11 @@ const wait = (ms)=>new Promise(r=>setTimeout(r,ms));
             console.log('✅ Tables synced');
             return;
         } catch (e) {
-            console.error(`❌ Erreur de connexion: ${e}`);
+            console.error(`❌ Connection error: ${e}`);
             await wait(1500);
         }
     }
-    console.error('⚠️ DB indisponible après retries — l’API démarre quand même, mais les routes DB échoueront.');
+    console.error('⚠️ DB unavailable after retries, API will still start, but DB routes will fail.');
 })();
 
 

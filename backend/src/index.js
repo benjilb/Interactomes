@@ -15,7 +15,7 @@ const app = express();
 process.on('unhandledRejection', (r) => console.error('UNHANDLED REJECTION', r));
 process.on('uncaughtException', (e) => console.error('UNCAUGHT EXCEPTION', e));
 
-// 🔎 Log chaque requête pour savoir si on arrive au serveur
+// Log chaque requête pour savoir si on arrive au serveur
 app.use((req, res, next) => {
     const t0 = Date.now();
     res.on('finish', () => {
@@ -23,8 +23,6 @@ app.use((req, res, next) => {
     });
     next();
 });
-// ⚠️ NE PAS mettre CORS, static, ni DB ici pour l’instant.
-// ⚠️ NE PAS importer vos routes ici pour l’instant.
 const RAW_ORIGIN = process.env.URL || 'http://localhost:5173';
 const ORIGIN = RAW_ORIGIN.replace(/\/+$/, ''); // retire slash final
 

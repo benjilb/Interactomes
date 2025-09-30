@@ -116,7 +116,7 @@ router.post('/prepare', authRequired, upload.single('file'), async (req, res) =>
         if (!fs.existsSync(hashedPath)) fs.renameSync(filePath, hashedPath);
         else fs.unlinkSync(filePath);
 
-        // 👉 utilise TON parser (parse tout le fichier)
+        // utilise TON parser (parse tout le fichier)
         const rows = parseCsv(hashedPath);
         if (!rows.length) return res.status(400).json({ error: 'Empty CSV or missing headers' });
 
@@ -127,7 +127,7 @@ router.post('/prepare', authRequired, upload.single('file'), async (req, res) =>
         const { taxon_id: organism_taxon_id, scientific_name, common_name } =
             await getOrganismFromAcc(firstAcc);
 
-// ✅ crée/retourne l’organisme avec "name" (NOT NULL)
+// crée/retourne l’organisme avec "name" (NOT NULL)
         await Organism.findOrCreate({
             where:    { taxon_id: organism_taxon_id },
             defaults: { taxon_id: organism_taxon_id, name: scientific_name, common_name }
@@ -156,7 +156,7 @@ router.post('/prepare', authRequired, upload.single('file'), async (req, res) =>
         });
     } catch (e) {
         console.error('POST /uploads/prepare ERROR:', e);
-        return res.status(500).json({ error: 'Analyse fichier échouée', details: String(e.message || e) });
+        return res.status(500).json({ error: 'File analysis failed', details: String(e.message || e) });
     }
 });
 
@@ -165,20 +165,20 @@ router.post('/prepare', authRequired, upload.single('file'), async (req, res) =>
 router.post('/commit', authRequired, async (req, res) => {
     try {
             const { file_sha256, filename, organism_taxon_id, organelle_id, mode, dataset_id, experiment, description } = req.body || {};        if (!file_sha256 || !filename || !organism_taxon_id || !organelle_id || !mode) {
-            return res.status(400).json({ error: 'Champs requis: file_sha256, filename, organism_taxon_id, organelle_id, mode' });
+            return res.status(400).json({ error: 'Required fields: file_sha256, filename, organism_taxon_id, organelle_id, mode' });
         }
 
         const csvPath = path.join(uploadDir, `${file_sha256}.csv`);
-        if (!fs.existsSync(csvPath)) return res.status(400).json({ error: 'Fichier introuvable (ré-exécuter prepare)' });
+        if (!fs.existsSync(csvPath)) return res.status(400).json({ error: 'File not found (re-run prepare)' });
 
 
-        // 🔎 FK présentes ?
+        // FK présentes ?
         const [org, orga] = await Promise.all([
             Organism.findByPk(Number(organism_taxon_id)),
             Organelle.findByPk(Number(organelle_id))
         ]);
-        if (!org)  return res.status(400).json({ error: `Organism taxon_id ${organism_taxon_id} introuvable (refaire /prepare)` });
-        if (!orga) return res.status(400).json({ error: `Organelle id ${organelle_id} introuvable (refaire /prepare)` });
+        if (!org)  return res.status(400).json({ error: `Organism taxon_id ${organism_taxon_id} not found (redo /prepare)` });
+        if (!orga) return res.status(400).json({ error: `Organelle id ${organelle_id} not found (redo /prepare)` });
 
 
         // create / append
@@ -197,11 +197,11 @@ router.post('/commit', authRequired, async (req, res) => {
                 description: (description ?? null)
             });
         } else if (mode === 'append') {
-            if (!dataset_id) return res.status(400).json({ error: 'dataset_id requis pour append' });
+            if (!dataset_id) return res.status(400).json({ error: 'dataset_id required for append' });
             dataset = await Dataset.findByPk(dataset_id);
-            if (!dataset) return res.status(404).json({ error: 'Dataset introuvable' });
+            if (!dataset) return res.status(404).json({ error: 'Dataset not found' });
             if (dataset.organism_taxon_id !== Number(organism_taxon_id) || dataset.organelle_id !== Number(organelle_id)) {
-                return res.status(400).json({ error: 'Dataset incompatible (organism/organelle différents)' });
+                return res.status(400).json({ error: 'Incompatible dataset (different organism/organelle)' });
             }
             if (experiment != null || description != null) {
                 if (typeof experiment === 'string')  dataset.experiment  = experiment;
@@ -209,7 +209,7 @@ router.post('/commit', authRequired, async (req, res) => {
                 await dataset.save({ silent: true });
             }
         } else {
-            return res.status(400).json({ error: 'mode invalide' });
+            return res.status(400).json({ error: 'invalid mode' });
         }
 
         // 📥 parse CSV en sécurité
@@ -217,9 +217,9 @@ router.post('/commit', authRequired, async (req, res) => {
         try {
             rows = parseCsv(csvPath);    // ta fonction
         } catch (e) {
-            return res.status(400).json({ error: 'CSV invalide', details: String(e.message || e) });
+            return res.status(400).json({ error: 'Invalid CSV', details: String(e.message || e) });
         }
-        if (!rows?.length) return res.status(400).json({ error: 'CSV vide' });
+        if (!rows?.length) return res.status(400).json({ error: 'Empty CSV' });
 
         // Accumule les accessions + crosslinks
         const accs = new Set();
@@ -247,9 +247,9 @@ router.post('/commit', authRequired, async (req, res) => {
             });
         }
         if (!payload.length) {
-            return res.status(400).json({ error: 'Aucun crosslink valide (positions absentes ou non numériques)' });
+            return res.status(400).json({ error: 'No valid crosslinks (positions missing or non-numeric)' });
         }
-        // Upsert proteins manquantes (⚠️ Protein.taxon_id NOT NULL)
+        // Upsert proteins manquantes ( Protein.taxon_id NOT NULL)
         await upsertProteinsForTaxon([...accs], Number(organism_taxon_id));
 
 

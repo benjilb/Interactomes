@@ -79,7 +79,7 @@ router.get('/mine', authRequired, async (req, res) => {
 });
 
 
-// ✅ Public: tous les datasets
+// Public: tous les datasets
 
 router.get('/all', async (req, res) => {
     try {
@@ -197,7 +197,7 @@ router.delete('/:id', authRequired, async (req, res) => {
  * - crosslinks: [{ Protein1, Protein2, AbsPos1, AbsPos2, Score }]
  * - proteins:  [{ uniprot_id, gene_name, protein_name, sequence, length, taxon_id }]
  *
- * ⚠️ Route publique (tu as dit que tout le monde peut voir).
+ *  Route publique (tu as dit que tout le monde peut voir).
  */
 router.get('/:id/graph', async (req, res) => {
     try {

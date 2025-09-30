@@ -1,10 +1,10 @@
 <template>
   <div v-if="crosslinks?.length" class="crosslink-table">
-    <div class="table-header"> <!-- 👉 ajouté -->
+    <div class="table-header">
       <h3 class="mb-2 text-lg font-semibold text-gray-700">
         Crosslinks for {{ proteinLabel }}
       </h3>
-      <button class="export-csv-btn" @click="exportCsv">Exporter CSV</button> <!-- 👉 ajouté -->
+      <button class="export-csv-btn" @click="exportCsv">Export CSV</button>
     </div>
 
     <DataTable :value="crosslinks" scrollable scrollHeight="600px" class="p-datatable-sm">
@@ -41,7 +41,6 @@ const proteinLabel = computed(() =>
     'Selected protein'
 )
 
-// 👉 ajouté : export CSV simple, basé sur les données visibles du tableau (props.crosslinks)
 function exportCsv () {
   const cols = ['Protein1', 'Protein2', 'AbsPos1', 'AbsPos2', 'Score']
 
@@ -78,7 +77,7 @@ function exportCsv () {
   height: 800px;
 }
 
-/* 👉 ajouté : header avec bouton à droite */
+
 .table-header {
   display: flex;
   align-items: center;
@@ -98,7 +97,7 @@ function exportCsv () {
   background-color: #0284c7;
 }
 
-.crosslink-table ::v-deep(.p-datatable-thead> tr > th) {
+.crosslink-table ::v-deep(.p-datatable-thead > tr > th) {
   background-color: #242424 !important;
   color: white;
   position: sticky;
