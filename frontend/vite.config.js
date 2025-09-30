@@ -15,7 +15,13 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: ['interactomes.scicore.unibas.ch'],
     hmr: false,
-
+   /*
+    hmr: {
+      host: 'interactomes.scicore.unibas.ch',
+      //hmr: { host: 'interactomes.scicore.unibas.ch', protocol: 'wss', clientPort: 443 } for https
+      protocol: 'ws',
+      clientPort: 80,
+    },*/
   },
   preview: {
     allowedHosts: ['interactomes.scicore.unibas.ch'],
