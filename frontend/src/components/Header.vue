@@ -4,7 +4,7 @@
     <div class="header-left">
       <!-- LOGO = bouton Accueil -->
       <RouterLink to="/" class="logo-link" aria-label="Go to home page">
-        <img src="@/assets/logo/websiteicon.png" alt="Logo Interactomes" class="logo" />
+        <img src="@/assets/logo/networkLogo.png" alt="Logo Interactomes" class="logo" />
       </RouterLink>
       <h1 class="title">Interactomes</h1>
 

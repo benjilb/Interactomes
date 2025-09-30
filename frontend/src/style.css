@@ -95,7 +95,6 @@ html, body { margin: 0; }
 
 /* --- Force dark theme everywhere --- */
 :root {
-  /* Demande aux éléments natifs (inputs, scrollbars…) d'utiliser le thème sombre */
   color-scheme: dark;
 }
 
