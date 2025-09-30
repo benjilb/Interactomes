@@ -165,42 +165,6 @@ function recreateGlobalEdges() {
   cy.add(edges);
 }
 
-//fonction pour les noeuds en bas a droite
-function repositionIsolatedNodes(radius = 300) {
-  const connectedNodes = cy.nodes().filter(n => {
-    const edges = n.connectedEdges().filter(e => e.style('display') !== 'none');
-    return edges.some(e => e.data('type') === 'inter');
-  });
-
-  // Centre du cluster principal
-  const center = {
-    x: connectedNodes.map(n => n.position().x).reduce((a, b) => a + b, 0) / connectedNodes.length,
-    y: connectedNodes.map(n => n.position().y).reduce((a, b) => a + b, 0) / connectedNodes.length
-  };
-
-  // Trouve les isolés (pas de edge inter)
-  const isolatedNodes = cy.nodes().filter(n => {
-    const edges = n.connectedEdges().filter(e => e.style('display') !== 'none');
-    return edges.every(e => {
-      const t = e.data('type');
-      return t === 'intra' || t === 'flag' || e.hasClass('ghost');
-    });
-  });
-
-  // Positionner en cercle autour du centre
-  const count = isolatedNodes.length;
-  isolatedNodes.forEach((node, i) => {
-    const angle = (2 * Math.PI * i) / count;
-    const x = center.x + radius * Math.cos(angle);
-    const y = center.y + radius * Math.sin(angle);
-    node.position({ x, y });
-  });
-
-  console.log(`✅ ${count} nœuds isolés repositionnés en cercle.`);
-}
-
-
-
 function buildGraphData() {
   fastaMap.clear();
   edgeMap.clear();
@@ -469,10 +433,6 @@ const generateGraph = async () => {
       }
     ]
   });
-  // essai pour mettre les nodes isolés autour du cluster principal
-  setTimeout(() => {
-    repositionIsolatedNodes();
-  }, 1000);
 
   cy.ready(() => {
     forceCanvasAlignment();
