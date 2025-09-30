@@ -3,9 +3,9 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
+  background-color: #242424 !important;
   color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -13,9 +13,9 @@
   -moz-osx-font-smoothing: grayscale;
 
   /* layout */
-  --header-height: 64px;          /* adapte si besoin */
-  --page-max-width: 1280px;       /* largeur utile du contenu */
-  --page-padding: 16px;           /* padding horizontal */
+  --header-height: 64px;
+  --page-max-width: 1280px;
+  --page-padding: 16px;
 }
 
 a { font-weight: 500; color: #646cff; text-decoration: inherit; }
@@ -80,12 +80,7 @@ button:focus, button:focus-visible { outline: 4px auto -webkit-focus-ring-color;
   padding: var(--page-padding) 0; /* padding vertical global léger */
 }
 
-/* Thème clair */
-@media (prefers-color-scheme: light) {
-  :root { color: #213547; background-color: #ffffff; }
-  a:hover { color: #747bff; }
-  button { background-color: #f9f9f9; }
-}
+
 /* sécurité : pas de marge navigateur */
 html, body { margin: 0; }
 
